@@ -1,0 +1,37 @@
+# Builds (make, make router, make PRESET=...)
+/mvd
+/mvd-*
+!/mvd-*/
+*.test
+*.out
+/dist/
+mvd-src.tar.gz
+
+# Go tooling
+/coverage*
+*.prof
+go.work
+go.work.sum
+
+# A live config or secrets dropped in the tree by mistake (the example lives
+# in deploy/config.example.toml)
+/config.toml
+*.local.toml
+.env
+
+# Editors and OSes
+.DS_Store
+._*
+.vscode/
+.idea/
+*.swp
+*~
+\#*\#
+
+# Python (scripts/demo)
+__pycache__/
+
+
+# The demo library's reviewed artwork (scripts/demo/seed.py --media), kept
+# out of git for now
+/scripts/demo/demo_media/

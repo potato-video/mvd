@@ -1,0 +1,27 @@
+{{define "content"}}
+{{/* A library page: the posters, as the Apple TV's grids. No heading or
+   search: the nav says where you are. */}}
+<div class="wrap library">
+{{if .Data.Cards}}
+  {{with .Data.Sort}}
+  {{/* The order: picking a sort starts it its natural way, and the arrow
+     (pointing down for descending) reverses it. Both swap in the whole
+     library, keeping the select's focus by its id. */}}
+  <form class="sortbar" action="{{.Path}}" method="get"
+    hx-target=".library" hx-select=".library" hx-swap="outerHTML" hx-push-url="true">
+    <label for="sort">Sort</label>
+    <select id="sort" name="sort" hx-get="{{.Path}}" hx-trigger="change">
+      {{- range .Options}}
+      <option value="{{.Word}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+      {{- end}}
+    </select>
+    <a class="sortdir{{if .Descending}} desc{{end}}" href="{{.Reverse}}" title="Reverse the order"
+      aria-label="{{if .Descending}}Descending{{else}}Ascending{{end}}: reverse the order"></a>
+  </form>
+  {{end}}
+  <div class="grid">{{range .Data.Cards}}{{template "tall" .}}{{end}}</div>
+{{else}}
+  <div class="empty"><strong>{{.Data.Empty}}</strong>Put some in the import folder, then run <code>mvd import</code>.</div>
+{{end}}
+</div>
+{{end}}

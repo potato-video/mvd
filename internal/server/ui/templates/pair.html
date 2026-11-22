@@ -1,0 +1,55 @@
+{{define "content"}}
+{{/* Pair: someone signed in lets an Apple TV in, with their own access,
+   without a password being typed there. The admin chooses whose. */}}
+{{with .Data}}
+<div class="wrap pair">
+  <div class="page-head"><h1>Pair a device</h1></div>
+  {{with .Done}}<p class="pair-done">{{.}}</p>{{end}}
+  {{with .Err}}<p class="pair-err">{{.}}</p>{{end}}
+
+  {{if .Code}}
+  <form method="post" action="/ui/pair" hx-boost="false" class="pair-ask">
+    <p class="pair-who"><strong>{{.Device}}</strong> at {{.Address}} asked {{.Asked}}.</p>
+    <p class="pair-code" aria-label="Code">{{.Code}}</p>
+    <input type="hidden" name="code" value="{{.Raw}}">
+    {{if .Tokens}}
+    <p class="pair-check">Check this is the code on the device's screen. Letting it in is the same as typing
+      that password there.</p>
+    <fieldset class="pair-tokens">
+      <legend>Let it in as</legend>
+      {{range .Tokens}}<label><input type="radio" name="token" value="{{.}}" required> {{.}}{{if eq . "admin"}}
+        <span class="dim">: everything, uploads and imports included</span>{{end}}</label>{{end}}
+    </fieldset>
+    {{else}}
+    <p class="pair-check">Check this is the code on the device's screen. Letting it in gives it what this
+      browser has: {{if .Admin}}everything, uploads and imports included{{else}}the library, as
+      <strong>{{.As}}</strong>{{end}}.</p>
+    {{end}}
+    <div class="pair-buttons">
+      <button class="btn play" type="submit" name="action" value="approve">Let it in</button>
+      <button class="btn" type="submit" name="action" value="refuse" formnovalidate>Refuse</button>
+    </div>
+  </form>
+  {{else}}
+  {{if .Missing}}<p class="pair-err">No device is waiting with that code. Codes last five minutes: check the
+    device's screen, and type the code it shows now.</p>{{end}}
+  <form method="get" action="/pair" hx-boost="false" class="pair-type">
+    <label for="pair-code">The code on the device's screen</label>
+    <input class="search" id="pair-code" type="text" name="code" placeholder="CC6W-TAB6"
+      autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+    <button class="btn" type="submit">Next</button>
+  </form>
+  {{if .Waiting}}
+  <h2 class="pair-h">Waiting</h2>
+  <ul class="pair-list">
+    {{range .Waiting}}<li><a href="/pair?code={{.Code}}">{{if .Device}}{{.Device}}{{else}}A device{{end}}</a>
+      <span class="dim">{{.Address}} · {{.Code}}</span></li>{{end}}
+  </ul>
+  {{else}}
+  <p class="dim">{{if .Admin}}No devices are waiting. {{end}}An Apple TV signing in to this server shows a
+    square code to scan with a phone, which opens this page, with a code under it to type here.</p>
+  {{end}}
+  {{end}}
+</div>
+{{end}}
+{{end}}

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  mvd server as a macOS LaunchAgent: it runs as you while you're logged in,
+  reading ~/.config/mvd/config.toml like the command line does.
+
+  launchd doesn't expand ~ or $HOME, so the paths below are written out in
+  full; 'mvd setup service' prints it with yours (and where mvd is) filled in:
+
+    mvd setup service > ~/Library/LaunchAgents/local.mvd.server.plist
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.mvd.server.plist
+    launchctl kickstart -k gui/$(id -u)/local.mvd.server     # restart it
+    launchctl bootout gui/$(id -u)/local.mvd.server          # stop and unload
+    tail -f ~/Library/Logs/mvd.log                           # its log
+
+  The first time it reads an external drive, macOS may ask to allow access to
+  removable volumes for mvd.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>local.mvd.server</string>
+
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/YOU/.local/bin/mvd</string>
+		<string>server</string>
+	</array>
+
+	<key>RunAtLoad</key>
+	<true/>
+
+	<!-- Restart it if it dies. With the library on an external drive, use the
+	     PathState form instead, so it only runs while the drive is there:
+	<key>KeepAlive</key>
+	<dict>
+		<key>PathState</key>
+		<dict>
+			<key>/Volumes/Media</key>
+			<true/>
+		</dict>
+	</dict>
+	-->
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+
+	<key>StandardOutPath</key>
+	<string>/Users/YOU/Library/Logs/mvd.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/YOU/Library/Logs/mvd.log</string>
+
+	<!-- Lower priority than things you're using. -->
+	<key>ProcessType</key>
+	<string>Background</string>
+</dict>
+</plist>

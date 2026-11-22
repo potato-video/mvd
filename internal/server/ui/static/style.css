@@ -1,0 +1,1270 @@
+/* mvd: charcoal, with gold for play, progress and the name, and cornflower
+   for watched. */
+
+@font-face {
+  font-family: "Bricolage";
+  src: url("/static/bricolage.woff2") format("woff2");
+  font-weight: 200 800;
+  font-stretch: 80% 100%;
+  font-display: swap;
+}
+
+:root {
+  --mvd-bg-dark: #2b2d2f;
+  --mvd-red: #8b0000;
+  --mvd-cornflower: #3f648e;
+  --mvd-gold: #d4af37;
+  --mvd-text-light: #f4f4f6;
+
+  --ink: var(--mvd-bg-dark);
+  --ink-2: #35383b;
+  --line: #46494d;
+  --paper: var(--mvd-text-light);
+  --dim: #a7a9ad;
+  --amber: var(--mvd-gold);
+  --amber-ink: #2b2d2f;
+  --sage: var(--mvd-cornflower);
+  --sage-text: #9dbbe0;
+  --radius: 6px;
+  --gutter: 16px;
+  --top-h: 60px;
+  color-scheme: dark;
+}
+
+@media (min-width: 720px) {
+  :root { --gutter: 32px; }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--paper);
+  font: 400 1rem/1.5 "Bricolage", system-ui, sans-serif;
+  font-optical-sizing: auto;
+}
+
+a { color: inherit; }
+
+img { display: block; max-width: 100%; }
+
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.wrap {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+/* ---------- top bar ---------- */
+
+/* A fixed height, so the home page can fill exactly what's below it. */
+.top { height: var(--top-h); border-bottom: 1px solid var(--line); }
+
+.top-in {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  height: 100%;
+  padding-top: 1px;
+}
+
+/* The name: the gold logo, as in the apps. */
+.mark {
+  position: relative;
+  align-self: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  line-height: 0;
+  cursor: pointer;
+}
+.mark img { width: 60px; height: 28px; }
+/* "Copied" for a moment after a click copies the version. */
+.mark.copied::after {
+  content: "Copied";
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-stretch: 100%;
+  white-space: nowrap;
+  z-index: 10;
+}
+
+.top nav { display: flex; gap: 20px; white-space: nowrap; }
+@media (max-width: 479px) {
+  .top-in { gap: 12px; }
+  .top nav { gap: 12px; font-size: 0.95rem; }
+}
+
+.top nav a {
+  color: var(--dim);
+  text-decoration: none;
+  padding-bottom: 4px;
+  border-bottom: 2px solid transparent;
+}
+
+.top nav a:hover { color: var(--paper); }
+
+.top nav a[aria-current="page"] {
+  color: var(--paper);
+  border-bottom-color: var(--amber);
+}
+
+/* Search: the magnifying glass at the end of the bar, as the Apple TV's tab. */
+.nav-search {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  padding: 6px;
+  color: var(--dim);
+  border-bottom: 2px solid transparent;
+}
+.nav-search:hover { color: var(--paper); }
+.nav-search[aria-current="page"] { color: var(--paper); border-bottom-color: var(--amber); }
+
+/* ---------- headings and rows ---------- */
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px 24px;
+  margin: 28px 0 20px;
+}
+
+h1, h2, .title {
+  font-weight: 760;
+  font-stretch: 80%;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+  margin: 0;
+}
+
+.page-head h1 { font-size: clamp(2rem, 4vw, 2.8rem); }
+
+.count { color: var(--dim); font-weight: 400; font-stretch: 100%; font-size: 1rem; margin-left: 8px; letter-spacing: 0; }
+
+.row { margin: 32px 0 8px; }
+
+.row h2 { font-size: 1.5rem; margin-bottom: 12px; }
+
+.search {
+  width: min(320px, 100%);
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ink-2);
+  color: var(--paper);
+  font: inherit;
+}
+
+.search::placeholder { color: var(--dim); }
+
+/* The Search page: the field, then what it found as rows of cards. */
+.searchbar { display: flex; gap: 10px; align-items: center; }
+.searchbar .search { flex: 1; width: auto; max-width: 560px; font-size: 1.1rem; }
+#results .row:first-child { margin-top: 24px; }
+#results .grid { margin-bottom: 16px; }
+
+/* ---------- cards ---------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 24px 16px;
+  margin-bottom: 48px;
+}
+
+@media (min-width: 720px) {
+  .grid { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); }
+}
+
+.card { text-decoration: none; display: block; min-width: 0; }
+
+.pic {
+  position: relative;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--ink-2);
+}
+
+.tall .pic, .grid .pic { aspect-ratio: 2 / 3; }
+
+/* Episodes a search found: stills, not posters. */
+.grid.stills { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+@media (min-width: 720px) {
+  .grid.stills { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+}
+.grid.stills .pic { aspect-ratio: 16 / 9; }
+
+.pic img { width: 100%; height: 100%; object-fit: cover; }
+
+.pic-link { display: block; width: 100%; height: 100%; }
+
+/* No artwork: the title stands in, set like a spine label. */
+.pic .blank {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: 12px;
+  font-weight: 700;
+  font-stretch: 80%;
+  font-size: 1.15rem;
+  line-height: 1.1;
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.watched .pic img { opacity: 0.45; }
+
+/* "new", "3 new", "watched": in the corner of a poster or a still. */
+.pic .pill.corner { position: absolute; top: 8px; right: 8px; }
+
+.bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(43, 45, 47, 0.7);
+}
+
+.bar span { display: block; height: 100%; background: var(--amber); }
+
+
+/* The bottom sixth of a picture in progress: hover it for "5m of 1h32 ·
+   Clear progress"; a click clears. Never on touch screens. */
+.clearband {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-height: 16.667%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 8px;
+  padding: 4px 10px;
+  border: 0;
+  background: rgba(20, 21, 22, 0.84);
+  color: var(--paper);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.clearband .act { color: var(--amber); }
+.clearband:hover, .clearband:focus-visible { opacity: 1; }
+.clearband:hover .act { text-decoration: underline; text-underline-offset: 3px; }
+@media (hover: none) { .clearband { display: none; } }
+
+/* An .m3u's address, to open in VLC or mpv: a plain link, shown as it is. */
+.playurl {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--amber);
+  font-size: 0.8rem;
+  text-decoration: none;
+  word-break: break-all;
+}
+.playurl:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* An episode's link shows on its row's hover or focus; on touch screens,
+   always. (Opacity, so the rows don't jump.) */
+.ep .playurl { opacity: 0; transition: opacity 0.15s; }
+.ep:hover .playurl, .ep:focus-within .playurl { opacity: 1; }
+@media (hover: none) { .ep .playurl { opacity: 1; } }
+
+.card .name {
+  display: block;
+  margin-top: 8px;
+  color: inherit;
+  text-decoration: none;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card .sub {
+  color: var(--dim);
+  font-size: 0.875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card:hover .name { text-decoration: underline; text-decoration-color: var(--amber); text-underline-offset: 3px; }
+
+.empty {
+  margin: 64px 0;
+  max-width: 52ch;
+  color: var(--dim);
+}
+
+.empty strong { display: block; color: var(--paper); font-size: 1.4rem; font-stretch: 80%; margin-bottom: 6px; }
+
+.empty code { color: var(--paper); }
+
+/* ---------- home: Up Next ---------- */
+
+/* As the Apple TV's: the list on the left, from the top bar to the bottom,
+   scrolling on its own; the featured entry beside it, its backdrop running
+   on under the list's edge and fading up from nothing there. On a phone,
+   the feature above the list. */
+.upnext {
+  /* Where the page's .wrap content would start, so the list lines up with
+     the top bar's logo on a wide screen. */
+  --edge: max(var(--gutter), (100vw - 1320px) / 2 + var(--gutter));
+  --list: clamp(320px, 30vw, 460px);
+  --overlap: 72px; /* how far the backdrop runs on under the list */
+  display: grid;
+  grid-template-columns: calc(var(--edge) + var(--list)) minmax(0, 1fr);
+  height: calc(100vh - var(--top-h));
+  height: calc(100dvh - var(--top-h));
+  min-height: 480px;
+}
+
+.features { position: relative; min-width: 0; margin-left: calc(-1 * var(--overlap)); }
+
+.feature {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+  isolation: isolate;
+}
+.feature[hidden] { display: none; }
+
+/* A third of the way up at the list's edge. */
+.feature .backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 calc(3 * var(--overlap)));
+  mask-image: linear-gradient(to right, transparent, #000 calc(3 * var(--overlap)));
+}
+.feature .backdrop img { width: 100%; height: 100%; object-fit: cover; object-position: center 25%; }
+.feature .backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to bottom, var(--ink), rgba(43, 45, 47, 0) 30%),
+    linear-gradient(to top, var(--ink) 2%, rgba(43, 45, 47, 0.72) 40%, rgba(43, 45, 47, 0.08) 78%),
+    linear-gradient(to right, rgba(43, 45, 47, 0.85), rgba(43, 45, 47, 0) 62%);
+}
+
+.feature .hero-in {
+  padding: 0 var(--edge) 36px calc(var(--overlap) + 40px);
+  max-width: calc(800px + var(--overlap));
+}
+
+
+/* What it's here for, as the Apple apps have it: carry on (gold), the
+   next episode (cornflower), new (red). A poster's corner pill is
+   cornflower too. */
+.pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.5;
+  background: var(--mvd-cornflower);
+  color: var(--paper);
+}
+.pill.continue { background: var(--mvd-gold); color: var(--amber-ink); }
+.pill.new { background: var(--mvd-red); }
+
+/* Over the backdrop's faded edge. The rows fade out at the top and the
+   foot as they scroll into them. */
+.queue { position: relative; z-index: 1; display: flex; flex-direction: column; min-height: 0; }
+
+.queue ul {
+  list-style: none;
+  margin: 0;
+  padding: 24px 0 32px var(--edge);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(100% - 32px), transparent);
+}
+
+/* A row: the still, and beside it the pill, the title, a dim line and, if
+   part-way, how far in; a hairline between rows. */
+.qrow {
+  position: relative;
+  display: grid;
+  grid-template-columns: 38% minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+/* The featured row: darkened from its hairline above to its own, out to
+   the window's edge and fading out towards the feature, its hairlines run
+   out with it. Half as dark while focus is on the feature's buttons. */
+.qrow::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -1px 0 -1px calc(-1 * var(--edge));
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.5) 60%, rgba(0, 0, 0, 0));
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+.qrow:first-child::before { border-top-color: transparent; }
+.qrow[aria-selected="true"]::before { opacity: 1; }
+.upnext:has(.features :focus-visible) .qrow[aria-selected="true"]::before { opacity: 0.5; }
+.qrow:not([aria-selected="true"]):hover::before { opacity: 0.3; border-color: transparent; }
+.qrow:focus-visible { outline-offset: -2px; }
+
+.qrow .pic { aspect-ratio: 16 / 9; }
+.qrow .clearband { font-size: 0.68rem; padding: 2px 6px; min-height: 30%; }
+
+.qtext { min-width: 0; }
+/* Bright when it's the one featured. */
+.qtitle {
+  margin-top: 5px;
+  font-weight: 650;
+  line-height: 1.2;
+  color: rgba(244, 244, 246, 0.8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qrow[aria-selected="true"] .qtitle { color: var(--paper); }
+.qsub {
+  color: var(--dim);
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qtext .meter { width: min(100%, 180px); margin-top: 8px; }
+
+@media (max-width: 899px) {
+  .upnext { display: flex; flex-direction: column; height: auto; min-height: 0; }
+  .features { order: -1; height: min(70vh, 560px); margin-left: 0; }
+  .feature .backdrop { -webkit-mask-image: none; mask-image: none; }
+  .feature .hero-in { padding: 0 var(--gutter) 24px; }
+  .feature .plot { -webkit-line-clamp: 3; }
+  .queue ul { overflow: visible; padding: 12px var(--gutter) 24px; -webkit-mask-image: none; mask-image: none; }
+  .qrow::before { left: calc(-1 * var(--gutter)); }
+}
+
+@media (max-width: 479px) {
+  .qrow { grid-template-columns: 120px minmax(0, 1fr); }
+}
+
+/* ---------- movie and show pages ---------- */
+
+.hero {
+  position: relative;
+  min-height: min(68vh, 640px);
+  display: flex;
+  align-items: flex-end;
+  isolation: isolate;
+}
+
+.hero .backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+}
+
+.hero .backdrop img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 25%;
+}
+
+.hero .backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to top, var(--ink) 4%, rgba(43, 45, 47, 0.72) 42%, rgba(43, 45, 47, 0.1) 80%),
+    linear-gradient(to right, rgba(43, 45, 47, 0.85), rgba(43, 45, 47, 0) 70%);
+}
+
+/* The movie page fills the window: there's nothing more to scroll to. */
+.hero.full { min-height: calc(100vh - var(--top-h)); min-height: calc(100dvh - var(--top-h)); }
+
+.hero > .wrap { width: 100%; }
+.hero .hero-in { padding: 120px 0 8px; }
+.hero.full .hero-in { padding-bottom: 48px; }
+
+/* ---------- the hero: Up Next's feature, the movie and show pages ---------- */
+
+/* As the Apple TV app's: the poster (not on Up Next) and beside it the
+   pill, the title with its certificate, an episode's line, the facts, the
+   plot, then how far in, the buttons and the .m3u link, at the foot. */
+.hero-in.with-poster {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 40px;
+  align-items: end;
+}
+
+.hero-in .poster { border-radius: var(--radius); overflow: hidden; aspect-ratio: 2 / 3; background: var(--ink-2); }
+.hero-in .poster:empty { border: 1px solid var(--line); }
+.hero-in .poster img { width: 100%; height: 100%; object-fit: cover; }
+
+.hero-text { min-width: 0; }
+
+.hero-text h1 {
+  margin-top: 12px;
+  font-size: clamp(2.1rem, 4.6vw, 4.4rem);
+  line-height: 0.98;
+  text-wrap: balance;
+}
+.hero-text h1:first-child { margin-top: 0; }
+.hero-text h1 a { text-decoration: none; }
+.hero-text h1 a:hover { text-decoration: underline; text-decoration-color: var(--amber); text-underline-offset: 6px; }
+
+/* After the title, on its last line (a word joiner holds it there). */
+.cert {
+  display: inline-block;
+  margin-left: 0.4em;
+  vertical-align: 0.4em;
+  border: 1px solid var(--dim);
+  border-radius: 3px;
+  padding: 0 5px;
+  font-size: max(0.85rem, 0.22em);
+  font-weight: 600;
+  font-stretch: 100%;
+  letter-spacing: 0;
+  color: var(--paper);
+  line-height: 1.5;
+}
+
+.hero-text .line { margin-top: 10px; font-size: 1.2rem; font-weight: 600; }
+
+/* One line: the genres, last, are what gives way. */
+.facts {
+  margin-top: 12px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.line + .facts { margin-top: 6px; }
+
+.hero-text .plot {
+  margin: 14px 0 0;
+  max-width: 62ch;
+  font-size: 1.075rem;
+  line-height: 1.55;
+  color: #d6d7da;
+  display: -webkit-box;
+  -webkit-line-clamp: 8;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* How far in, the buttons and the link as one block as wide as the
+   buttons, so the progress line runs the buttons' width. */
+.go { display: inline-grid; max-width: 100%; margin-top: 24px; }
+.go .actions { margin: 0; }
+/* The link doesn't widen it (with a token it can be long); it runs on past. */
+.go .playurl { margin-top: 8px; width: 0; min-width: 100%; white-space: nowrap; }
+
+/* How far in, a little apart over the buttons: a bar and what's left.
+   Hover or focus offers to clear it, like a card's strip; a click clears.
+   On a touch screen the offer always shows, so a tap isn't a surprise. */
+.progress {
+  display: flex;
+  width: 100%;
+  text-align: left;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dim);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.meter { flex: 1; min-width: 80px; height: 4px; border-radius: 2px; background: rgba(244, 244, 246, 0.22); overflow: hidden; }
+.meter span { display: block; height: 100%; background: var(--amber); }
+.progress .act { color: var(--amber); font-weight: 600; opacity: 0; transition: opacity 0.15s; }
+.progress:hover .act, .progress:focus-visible .act { opacity: 1; }
+.progress:hover .act { text-decoration: underline; text-underline-offset: 3px; }
+@media (hover: none) { .progress .act { opacity: 1; } }
+
+/* On a phone the poster sits over the text, smaller. */
+@media (max-width: 719px) {
+  .hero-in.with-poster { grid-template-columns: 1fr; gap: 20px; }
+  .hero-in .poster { width: 112px; }
+  .hero-text .plot { -webkit-line-clamp: 5; }
+}
+
+.detail { padding-bottom: 64px; }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 24px 0;
+}
+
+/* The buttons, as the Apple TV's (MVDButtonStyle): plain (a hairline on
+   the charcoal), gold for Play, cornflower for Watched and Remove from Up
+   Next, watched or not. Gold and cornflower turn inside out on hover or
+   keyboard focus, as the TV's do on focus. --btn-bg is the face's colour,
+   for the watched tick to be cut from its circle. */
+.btn {
+  --btn-bg: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--paper);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.btn:hover { border-color: var(--dim); }
+
+.btn.play { --btn-bg: var(--amber); background: var(--amber); border-color: var(--amber); color: var(--amber-ink); }
+.btn.play:hover, .btn.play:focus-visible { --btn-bg: var(--paper); background: var(--paper); border-color: var(--paper); }
+
+.btn.play:not(button)::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 11px solid currentColor;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+}
+
+.btn.secondary { --btn-bg: #303b47; background: rgba(63, 100, 142, 0.25); border-color: var(--sage); color: var(--sage-text); }
+.btn.secondary:hover, .btn.secondary:focus-visible {
+  --btn-bg: var(--sage-text); background: var(--sage-text); border-color: var(--sage-text); color: var(--ink);
+}
+
+.btn .icon { width: 1.15em; height: 1.15em; flex: none; }
+
+.btn.small { padding: 6px 12px; font-size: 0.875rem; }
+.btn.play.small:not(button)::before { border-left-width: 9px; border-top-width: 6px; border-bottom-width: 6px; }
+
+
+/* ---------- seasons and episodes ---------- */
+
+.seasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 22px;
+  margin: 40px 0 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.seasons a {
+  text-decoration: none;
+  color: var(--dim);
+  padding: 8px 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  font-weight: 600;
+}
+
+.seasons a:hover { color: var(--paper); }
+
+.seasons a[aria-current="true"] { color: var(--paper); border-bottom-color: var(--amber); }
+
+.episodes { list-style: none; margin: 0; padding: 0; }
+
+.ep {
+  display: grid;
+  grid-template-columns: 2.2rem 128px 1fr;
+  grid-template-areas: "num pic text" "num pic acts";
+  gap: 4px 14px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+  align-items: start;
+}
+
+@media (min-width: 720px) {
+  .ep {
+    grid-template-columns: 3rem 240px 1fr auto;
+    grid-template-areas: "num pic text acts";
+    gap: 0 22px;
+  }
+}
+
+/* The episode a search result opened the page at. */
+.ep { scroll-margin-top: 16px; }
+.ep:target { background: var(--ink-2); box-shadow: 0 0 0 12px var(--ink-2); border-radius: var(--radius); border-bottom-color: transparent; }
+
+.ep .num {
+  grid-area: num;
+  font-size: 1.9rem;
+  font-weight: 760;
+  font-stretch: 80%;
+  color: var(--dim);
+  line-height: 1;
+  text-align: right;
+}
+
+.ep .pic { grid-area: pic; aspect-ratio: 16 / 9; }
+.library { padding-top: 32px; }
+
+/* A grid's order, at its top right: a select, and an arrow that reverses
+   it, pointing down for descending as on the Apple TV. */
+.sortbar { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin: -16px 0 16px; }
+.sortbar label { color: var(--dim); font-size: 0.9rem; }
+.sortbar select {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ink-2);
+  color: var(--paper);
+  font: inherit;
+  font-size: 0.9rem;
+}
+.sortdir {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
+  color: var(--dim);
+}
+.sortdir:hover, .sortdir:focus-visible { color: var(--paper); background: var(--ink-2); }
+.sortdir::after {
+  content: "";
+  border: 6px solid transparent;
+  border-top: 0;
+  border-bottom: 8px solid currentColor;
+}
+.sortdir.desc::after { transform: rotate(180deg); }
+
+.ep .text { grid-area: text; min-width: 0; }
+
+/* Play (or Resume) over the watched toggle, as wide as each other; side by
+   side on a phone. */
+.ep .acts { grid-area: acts; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+@media (min-width: 720px) {
+  .ep .acts { flex-direction: column; align-items: stretch; }
+}
+
+/* An episode's still plays it: on hover, darkened, with a play button over it. */
+.ep .pic-link.play { position: relative; }
+.ep .pic-link.play::before, .ep .pic-link.play::after {
+  content: "";
+  position: absolute;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+.ep .pic-link.play::before { inset: 0; background: rgba(20, 21, 22, 0.45); }
+.ep .pic-link.play::after {
+  left: 50%;
+  top: 50%;
+  width: 52px;
+  height: 52px;
+  margin: -26px 0 0 -26px;
+  border-radius: 50%;
+  background: var(--amber) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 6.5v11l9-5.5z' fill='%232b2d2f'/%3E%3C/svg%3E") center / 26px no-repeat;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.ep .pic:hover .pic-link.play::before, .ep .pic:hover .pic-link.play::after { opacity: 1; }
+/* The strip that clears progress is the bottom of the still: no play there. */
+.ep .pic:has(.clearband:hover) .pic-link.play::before,
+.ep .pic:has(.clearband:hover) .pic-link.play::after { opacity: 0; }
+
+.ep h3 { margin: 0; font-size: 1.15rem; font-weight: 650; line-height: 1.25; }
+
+.ep h3 a { text-decoration: none; }
+
+.ep h3 a:hover { text-decoration: underline; text-decoration-color: var(--amber); text-underline-offset: 3px; }
+
+.ep .meta { color: var(--dim); font-size: 0.875rem; margin-top: 2px; }
+
+.ep .desc {
+  margin: 6px 0 0;
+  color: var(--dim);
+  max-width: 70ch;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (max-width: 719px) {
+  .ep .desc { display: none; }
+}
+
+.ep.watched .num, .ep.watched h3 { color: var(--dim); }
+
+/* ---------- watching ---------- */
+
+body.watch { background: #000; }
+
+.player {
+  position: relative;
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  place-items: center;
+}
+
+.player video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+
+/* Centred, clear of the corners, where browsers put their own controls
+   (Safari's full-screen and picture-in-picture are top left). */
+.player .bar-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  align-items: center;
+  text-align: center;
+  padding: 6px var(--gutter) 40px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.75), transparent);
+  transition: opacity 0.4s;
+}
+
+.player.idle .bar-top { opacity: 0; }
+
+.player .bar-top a { color: var(--dim); text-decoration: none; }
+.player .bar-top a:hover { color: var(--paper); }
+.player .bar-top .title { font-size: 1.3rem; }
+/* Matches the browser's own controls (Safari's): a 44px dark, blurred,
+   translucent button with a light grey glyph that brightens on hover. */
+.player .bar-top .close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+  color: rgba(255, 255, 255, 0.5);
+  transition: color 0.15s, background 0.15s;
+}
+.player .bar-top .close svg { width: 24px; height: 24px; }
+.player .bar-top .close:hover { color: rgba(255, 255, 255, 0.8); }
+.player .bar-top #next { flex-basis: 100%; color: var(--amber); }
+
+.notice {
+  position: absolute;
+  max-width: 44ch;
+  padding: 24px;
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.notice p { margin: 0 0 16px; }
+
+.notice[hidden] { display: none; }
+
+/* ---------- sign in ---------- */
+
+.signin { max-width: 360px; margin: 18vh auto; padding: 0 var(--gutter); }
+.signin h1 { font-size: 2.4rem; margin-bottom: 16px; }
+.signin .search { width: 100%; margin-bottom: 12px; }
+.signin .for { margin-bottom: 12px; }
+.signin .err { background: var(--mvd-red); color: var(--paper); padding: 10px 12px; border-radius: var(--radius); }
+
+/* ---------- pair ---------- */
+
+.pair { max-width: 640px; }
+.pair .dim { color: var(--dim); }
+.pair-done, .pair-err { padding: 10px 12px; border-radius: var(--radius); }
+.pair-done { background: rgba(63, 100, 142, 0.25); }
+.pair-err { background: var(--mvd-red); }
+.pair-code { font-size: clamp(2.6rem, 9vw, 4.5rem); font-weight: 760; font-stretch: 80%; letter-spacing: 0.06em;
+  margin: 12px 0; font-variant-numeric: tabular-nums; }
+.pair-tokens { border: 0; padding: 0; margin: 20px 0; }
+.pair-tokens legend { font-weight: 600; margin-bottom: 8px; }
+.pair-tokens label { display: block; padding: 6px 0; }
+.pair-buttons { display: flex; gap: 12px; }
+.pair-type label { display: block; margin-bottom: 8px; }
+.pair-type .search { text-transform: uppercase; margin-right: 8px; }
+.pair-h { font-size: 1.5rem; margin: 32px 0 12px; }
+.pair-list { list-style: none; padding: 0; }
+.pair-list li { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.pair-list .dim { margin-left: 8px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; scroll-behavior: auto !important; }
+}
+
+.ep.watched .pic img { opacity: 0.45; }
+
+@media (max-width: 719px) {
+  .hero { min-height: min(46vh, 380px); }
+  .hero .hero-in { padding-top: 72px; }
+}
+
+/* ---------- incoming ---------- */
+
+/* The mockup's shape in the website's look: an add bar, then the list
+   (wider) beside Needs you; one column on a phone, Needs you first. */
+
+.nav-count {
+  display: inline-block;
+  min-width: 1.4em;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--amber);
+  color: var(--amber-ink);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4em;
+  text-align: center;
+  vertical-align: 2px;
+}
+.nav-count[hidden] { display: none; }
+
+.inc-head { justify-content: flex-start; margin-bottom: 16px; }
+.inc-space { margin: 0; }
+
+.add-bar { max-width: 760px; margin-bottom: 32px; }
+
+.add-link { display: flex; gap: 0; }
+.add-link .search {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  padding: 11px 14px;
+  border-radius: var(--radius) 0 0 var(--radius);
+  border-right: 0;
+  font: inherit;
+}
+/* Focused, the field's ring draws over the button beside it. */
+.add-link .search:focus-visible { position: relative; z-index: 1; }
+.add-link .btn { border-radius: 0 var(--radius) var(--radius) 0; background: var(--ink-2); padding-inline: 24px; }
+.add-link .btn:hover { background: var(--line); }
+
+.add-hint { margin: 10px 0 0; color: var(--dim); font-size: 0.9rem; }
+.add-link + .add-hint { padding-left: 14px; }
+.pick { position: relative; color: var(--paper); text-decoration: underline; text-decoration-color: var(--line);
+  text-underline-offset: 3px; cursor: pointer; }
+.pick:hover, .pick:focus-within { text-decoration-color: var(--amber); }
+.pick input { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; font-size: 0; }
+
+/* The whole page takes a drop: a veil says so while something's dragged over. */
+.drop-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgba(43, 45, 47, 0.82);
+  border: 3px dashed var(--amber);
+  pointer-events: none;
+}
+.drop-veil[hidden] { display: none; }
+.drop-veil p { margin: 0; font-size: 1.6rem; font-weight: 700; font-stretch: 80%; }
+
+.inc-cols { display: grid; gap: 32px; grid-template-columns: minmax(0, 1fr); }
+.needs.none { display: none; }
+@media (min-width: 960px) {
+  .inc-cols { grid-template-columns: minmax(0, 1.8fr) minmax(300px, 1fr); }
+  .inc-cols .inc-list { grid-column: 1; grid-row: 1; }
+  .inc-cols .needs, .inc-cols .needs.none { display: block; grid-column: 2; grid-row: 1; border-left: 1px solid var(--line); padding-left: 28px; }
+  .needs .inc-empty { margin: 0; }
+}
+
+.inc-tools { display: flex; justify-content: flex-end; gap: 8px; margin: 0 0 8px; }
+.inc-tools .btn[disabled] { opacity: 0.5; cursor: progress; }
+
+.inc-rows { list-style: none; margin: 0 0 48px; padding: 0; }
+
+.inc-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 0 12px;
+  align-items: start;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.inc-row:first-child { border-top: 1px solid var(--line); }
+@media (max-width: 519px) {
+  /* A phone: the buttons go under the facts, so a long name has the width. */
+  .inc-row { grid-template-columns: 20px minmax(0, 1fr); }
+  .inc-actions { grid-column: 2; margin-top: 8px; }
+  .inc-actions:not(:has(*)) { display: none; }
+}
+.inc-row[data-drag] { cursor: grab; }
+.inc-row[data-drag] .inc-handle { touch-action: none; }
+.inc-handle { color: var(--dim); padding-top: 2px; }
+/* A download being dragged: lifted out of the list, solid, following the
+   pointer; a gold line where it will land. */
+.inc-row.lifted {
+  position: fixed;
+  z-index: 40;
+  margin: 0;
+  padding-inline: 8px;
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  cursor: grabbing;
+}
+.drop-line { list-style: none; height: 0; position: relative; }
+.drop-line::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -2px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--amber);
+}
+body.lifting { user-select: none; -webkit-user-select: none; cursor: grabbing; }
+.inc-handle .icon { width: 20px; height: 20px; display: block; }
+
+.inc-name { font-weight: 600; overflow-wrap: anywhere; }
+.inc-line { color: var(--dim); font-size: 0.9rem; margin-top: 2px; }
+.inc-row.mine .inc-line { color: var(--paper); }
+.inc-row.problem .inc-line { color: #f0a0a0; }
+
+.inc-bar { display: flex; align-items: center; gap: 10px; margin-top: 8px; max-width: 520px; }
+.inc-track { flex: 1; height: 4px; background: var(--ink-2); border-radius: 2px; overflow: hidden; }
+.inc-track span { display: block; height: 100%; background: var(--amber); }
+.inc-bar.idle .inc-track span { background: var(--line); }
+.inc-bar .pct { color: var(--dim); font-size: 0.8rem; font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
+
+/* A download's details: two columns, as the design has them. */
+.inc-facts {
+  display: none;
+  grid-template-columns: repeat(2, minmax(0, 220px));
+  gap: 0 40px;
+  margin: 12px 0 2px;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+.inc-row:has(.inc-info[open]) .inc-facts { display: grid; }
+.inc-facts dl { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); gap: 3px 12px; margin: 0; align-content: start; }
+.inc-facts dt { color: var(--dim); }
+.inc-facts dd { margin: 0; }
+
+.inc-actions, .need-actions { display: flex; gap: 6px; align-items: center; }
+form.inline { display: contents; }
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--paper);
+  cursor: pointer;
+  list-style: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+.icon-btn::-webkit-details-marker { display: none; }
+.icon-btn:hover { border-color: var(--dim); background: var(--ink-2); }
+.icon-btn .icon { width: 18px; height: 18px; }
+.inc-info { display: contents; }
+/* Info: an italic serif "i" (the button's already a circle). */
+.icon-i { font: italic 600 1.15rem/1 Georgia, "Times New Roman", serif; }
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.link-btn:hover { color: var(--paper); text-decoration-color: var(--amber); }
+.btn.danger { background: var(--mvd-red); border-color: var(--mvd-red); }
+.btn.danger:hover, .btn.danger:focus-visible { background: #a40000; border-color: #a40000; }
+.inc-info[open] > .icon-btn { background: var(--paper); color: var(--ink); border-color: var(--paper); }
+
+.inc-empty { color: var(--dim); margin: 0 0 64px; }
+.inc-empty[hidden] { display: none; }
+
+.banner { max-width: none; }
+
+/* Needs you: a gold edge and a "!", the name, what's wrong. */
+.needs h2 { font-size: 1.5rem; margin-bottom: 14px; }
+.need {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 4px 12px;
+  padding: 12px 12px 12px 12px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius);
+  background: var(--ink-2);
+}
+.need-mark {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--amber);
+  color: var(--amber-ink);
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+.need-name { margin: 0; font-size: 1rem; font-weight: 600; font-stretch: 100%; letter-spacing: 0; line-height: 1.3; overflow-wrap: anywhere; }
+.need-line { margin: 2px 0 0; color: var(--dim); font-size: 0.9rem; }
+.need-actions { grid-column: 2; justify-content: flex-end; }
+.need-actions:empty { display: none; }
+.need-note { margin: 8px 0 0; font-size: 0.9rem; color: var(--dim); }
+.need-files { margin: 8px 0 0; padding-left: 18px; font-size: 0.85rem; color: var(--dim); overflow-wrap: anywhere; }
+
+/* A card's titles: each opens the dialog; the arrow is its TMDB page. */
+.cands { list-style: none; margin: 10px 0 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); }
+.cands:empty { display: none; }
+.cand { display: flex; align-items: flex-start; border-bottom: 1px solid var(--line); }
+.cand:last-child { border-bottom: 0; }
+.cand-pick {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 10px;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--paper);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cand-pick:hover, .cand-pick:focus-visible { background: rgba(212, 175, 55, 0.1); }
+.cand-title { font-weight: 600; font-size: 0.92rem; }
+.cand-score { color: var(--amber); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.cand-orig, .cand-plot { grid-column: 1 / -1; color: var(--dim); font-size: 0.82rem; }
+.cand-plot { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cand-link { padding: 9px 10px; color: var(--dim); }
+.cand-link:hover { color: var(--paper); }
+.cand-link .icon { width: 16px; height: 16px; display: block; }
+.cand-err { padding: 8px 10px; color: #f0a0a0; font-size: 0.9rem; }
+
+.need-search { margin-top: 10px; display: grid; gap: 8px; }
+.need-search .search { width: 100%; font: inherit; font-size: 0.9rem; }
+.need-kind { display: flex; gap: 14px; align-items: center; margin: 0; padding: 0; border: 0; font-size: 0.9rem; }
+.need-kind legend { float: left; margin-right: 4px; color: var(--paper); }
+
+/* The import dialog: what a choice would import, to confirm it. */
+.import-dialog {
+  width: min(640px, calc(100vw - 2 * var(--gutter)));
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--paper);
+}
+.import-dialog.small { width: min(460px, calc(100vw - 2 * var(--gutter))); }
+.import-dialog.small .dlg-main { padding: 20px; }
+.import-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+.dlg { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; padding: 20px; }
+.dlg-poster img { width: 140px; height: auto; border-radius: var(--radius); background: var(--ink-2); }
+.dlg-poster:empty { display: none; }
+.dlg-main h2 { font-size: 1.6rem; }
+.dlg-orig { margin: 4px 0 0; color: var(--dim); }
+.dlg-facts { margin: 6px 0 0; color: var(--dim); font-size: 0.9rem; }
+.dlg-plot { margin: 10px 0 0; font-size: 0.95rem; }
+.dlg-into { margin: 12px 0 0; font-weight: 600; }
+.dlg-from { font-weight: 400; color: var(--dim); overflow-wrap: anywhere; }
+.dlg-err { margin: 10px 0 0; color: #f0a0a0; }
+.dlg-err:empty { display: none; }
+.dlg-buttons { display: flex; gap: 10px; margin-top: 16px; }
+.dlg-buttons .btn[disabled] { opacity: 0.5; cursor: progress; }
+.btn.play-plain { background: var(--amber); border-color: var(--amber); color: var(--amber-ink); }
+.btn.play-plain:hover, .btn.play-plain:focus-visible { background: var(--paper); border-color: var(--paper); }
+.dlg-tmdb { display: inline-flex; gap: 10px; align-items: center; margin-top: 14px; color: var(--dim); font-size: 0.85rem; }
+
+/* TMDB's credit, at the foot of every page but the player's. */
+.credit { border-top: 1px solid var(--line); margin-top: 48px; }
+.credit-in { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding-top: 18px; padding-bottom: 28px; }
+.credit img { display: block; }
+.credit p { margin: 0; color: var(--dim); font-size: 0.8rem; }
+.credit .signed-in { margin: 0 0 0 auto; color: var(--dim); font-size: 0.8rem; }
+.credit .signed-in a { color: inherit; }
+.credit .signed-in button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
+  text-decoration: underline; cursor: pointer; }
+@media (max-width: 519px) {
+  .dlg { grid-template-columns: minmax(0, 1fr); }
+  .dlg-poster img { width: 110px; }
+}
+
+.flash {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--sage);
+  background: rgba(63, 100, 142, 0.14);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  max-width: 72ch;
+}
+
+.flash.bad { border-left-color: var(--mvd-red); background: rgba(139, 0, 0, 0.22); }
+
+.hint { color: var(--dim); margin: 8px 0 0; max-width: 72ch; }
+
+.empty pre {
+  margin: 12px 0 0;
+  color: var(--paper);
+  font: 0.9rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}

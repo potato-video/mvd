@@ -1,0 +1,12 @@
+{{define "content"}}
+<form class="signin" method="post" action="/login" hx-boost="false">
+  <h1>mvd</h1>
+  {{with .Data.Device}}<p class="for">Sign in to let <strong>{{.}}</strong> in. It gets the same access as the
+    password you use.</p>{{end}}
+  {{if .Data.Wrong}}<p class="err">That password isn't right. It's a <code>token</code> in the server's config.toml.</p>{{end}}
+  {{if .Data.Wait}}<p class="err">Too many wrong tries. Wait {{.Data.Wait}} {{if eq .Data.Wait 1}}second{{else}}seconds{{end}}, then try again.</p>{{end}}
+  <input type="hidden" name="next" value="{{.Data.Next}}">
+  <input class="search" type="password" name="token" placeholder="Password" aria-label="Password" autocomplete="current-password" autofocus required>
+  <button class="btn play" type="submit">Sign in</button>
+</form>
+{{end}}

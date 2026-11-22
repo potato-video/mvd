@@ -1,0 +1,35 @@
+{{define "content"}}
+{{/* Search: movies, shows and episodes, as the Apple TV's Search tab. A
+   plain form, so it works without JavaScript; htmx asks again after each
+   pause in typing (dropping an answer still on its way) and swaps in only
+   the results, so the field keeps its focus. The address is kept in step,
+   so a search can be bookmarked. */}}
+{{with .Data}}
+<div class="wrap library">
+  <form class="searchbar" action="/search" method="get" role="search"
+    hx-get="/search" hx-target="#results" hx-select="#results" hx-swap="outerHTML" hx-replace-url="true">
+    <input class="search" id="q" type="search" name="q" value="{{.Q}}" placeholder="Movies, shows and episodes"
+      aria-label="Search" autocomplete="off" autocapitalize="off" spellcheck="false" autofocus
+      hx-get="/search" hx-trigger="input changed delay:300ms, search" hx-sync="closest form:replace">
+    <button class="btn secondary small" type="submit">Search</button>
+  </form>
+
+  <div id="results" aria-live="polite">
+  {{if .Found}}
+    {{with .Movies}}<section class="row"><h2>Movies</h2>
+      <div class="grid">{{range .}}{{template "tall" .}}{{end}}</div></section>{{end}}
+    {{with .Shows}}<section class="row"><h2>TV</h2>
+      <div class="grid">{{range .}}{{template "tall" .}}{{end}}</div></section>{{end}}
+    {{/* An episode opens its show's page at its row. Not boosted: the
+       browser only marks the row (:target) on a real page load. */}}
+    {{with .Episodes}}<section class="row"><h2>Episodes</h2>
+      <div class="grid stills" hx-boost="false">{{range .}}{{template "tall" .}}{{end}}</div></section>{{end}}
+  {{else if .Typed}}
+    <div class="empty"><strong>No results for “{{.Q}}”</strong>Check the spelling, or try fewer letters.</div>
+  {{else}}
+    <div class="empty"><strong>Search your library</strong>By title, collection, director or year. A few letters of each word will do.</div>
+  {{end}}
+  </div>
+</div>
+{{end}}
+{{end}}

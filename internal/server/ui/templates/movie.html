@@ -1,0 +1,10 @@
+{{define "content"}}
+{{/* The hero over the fanart, filling the window, as on the Apple TV:
+   there's nothing more to scroll to. */}}
+{{with .Data}}
+<section class="hero full" id="hero">
+  {{with .Fanart}}<div class="backdrop"><img src="{{.}}" alt=""></div>{{end}}
+  <div class="wrap">{{template "hero" .Hero}}</div>
+</section>
+{{end}}
+{{end}}

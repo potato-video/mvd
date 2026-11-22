@@ -1,0 +1,46 @@
+{{define "content"}}
+{{/* The hero over the fanart, with Play or Resume for the next episode;
+   then the seasons as tabs over the chosen season's episodes. */}}
+{{with .Data}}
+<section class="hero" id="hero">
+  {{with .S.Fanart}}<div class="backdrop"><img src="{{.}}" alt=""></div>{{end}}
+  <div class="wrap">{{template "hero" .Hero}}</div>
+</section>
+<div class="wrap detail">
+  <nav class="seasons" aria-label="Seasons">
+    {{range .S.Seasons}}
+      <a href="/tv/{{$.Data.S.ID}}?season={{.Number}}" aria-current="{{if eq .Number $.Data.Season.Number}}true{{else}}false{{end}}"
+        hx-target="#episodes" hx-select="#episodes" hx-swap="outerHTML" hx-push-url="true">{{if .Number}}Season {{.Number}}{{else}}Specials{{end}}</a>
+    {{end}}
+  </nav>
+
+  <ol class="episodes" id="episodes">
+  {{range .Season.Episodes}}
+    <li class="ep{{if .Watched}} watched{{end}}" id="c-ep-{{.ID}}">
+      <span class="num">{{.Episode}}{{if .LastEpisode}}–{{.LastEpisode}}{{end}}</span>
+      <div class="pic">
+        <a class="pic-link play" href="/watch/{{.ID}}" hx-boost="false" tabindex="-1" aria-hidden="true">
+          {{if .Thumb}}<img src="{{.Thumb}}" alt="" loading="lazy">{{end}}
+        </a>
+        {{if .Watched}}<span class="pill corner">Watched</span>{{end}}
+        {{if .Position}}
+          <div class="bar"><span style="width:{{pct .Position .Duration}}%"></span></div>
+          {{template "clearband" (band .ID (printf "%s %s" (epcode .Season .Episode .LastEpisode) .Title) .Position .Duration (printf "c-ep-%s" .ID) "hero")}}
+        {{end}}
+      </div>
+      <div class="text">
+        <h3><a href="/watch/{{.ID}}" hx-boost="false">{{if .Title}}{{.Title}}{{else}}Episode {{.Episode}}{{end}}</a></h3>
+        <div class="meta">{{epcode .Season .Episode .LastEpisode}}{{if .Aired}} · {{date .Aired}}{{end}}{{if .Runtime}} · {{runtime .Runtime}}{{end}}{{if .Position}} · {{clock .Position}} in{{end}}</div>
+        {{if .Plot}}<p class="desc">{{.Plot}}</p>{{end}}
+        {{with index $.Data.Links .ID}}<a class="playurl" href="{{.}}" hx-boost="false">{{.}}</a>{{end}}
+      </div>
+      <div class="acts">
+        <a class="btn play small" href="/watch/{{.ID}}" hx-boost="false">{{if .Position}}Resume{{else}}Play{{end}} {{epcode .Season .Episode .LastEpisode}}</a>
+        {{template "watched" (toggle .ID .Watched true (printf "c-ep-%s" .ID) "hero")}}
+      </div>
+    </li>
+  {{end}}
+  </ol>
+</div>
+{{end}}
+{{end}}

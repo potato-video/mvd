@@ -1,0 +1,44 @@
+# mvd server as a systemd *user* service: it runs as you, reads
+# ~/.config/mvd/config.toml like the command line does, and needs no root.
+# 'mvd setup service' prints it with ExecStart filled in:
+#
+#   mkdir -p ~/.config/systemd/user
+#   mvd setup service > ~/.config/systemd/user/mvd.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now mvd
+#   journalctl --user -u mvd -f       # its log
+#
+# To have it run without you logged in (a headless box):
+#   sudo loginctl enable-linger $USER
+#
+# As a system service instead: copy it to /etc/systemd/system/, add
+# User=yourname under [Service], change WantedBy to multi-user.target, and use
+# systemctl/journalctl without --user.
+
+[Unit]
+Description=mvd media library server
+Documentation=file://%h/src/mvd/README.md
+After=network-online.target
+Wants=network-online.target
+# If the library is on a drive that may mount late, wait for it, e.g.:
+# RequiresMountsFor=/mnt/media
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/mvd server
+Restart=on-failure
+RestartSec=5
+# SIGTERM is what mvd waits for: it flushes watch progress and stops cleanly.
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# Light hardening that works for user services too.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=default.target

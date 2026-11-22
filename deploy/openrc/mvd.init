@@ -1,0 +1,45 @@
+#!/sbin/openrc-run
+# OpenRC service for mvd server (Alpine Linux, Gentoo). 'mvd setup service'
+# prints it with command filled in:
+#
+#   mvd setup service > /etc/init.d/mvd && chmod +x /etc/init.d/mvd
+#   rc-update add mvd default && rc-service mvd start
+#   grep mvd /var/log/messages     # its log, through syslog
+#
+# It runs as the user mvd (adduser -D mvd), and reads that user's
+# /home/mvd/.config/mvd/config.toml. The library, data_dir and import folder
+# must be mvd's: chown -R mvd:mvd them. Run commands as mvd too, so what they
+# write is mvd's: su mvd -c 'mvd import'. (To run it as root instead, take
+# out command_user and set HOME=/root.)
+# On a diskless Alpine install, run 'lbu commit' afterwards to keep it.
+
+name="mvd"
+description="mvd media library server"
+command="/mnt/drive/bin/mvd"    # wherever the binary lives (on the drive, say)
+command_args="server"
+command_user="mvd:mvd"
+supervisor="supervise-daemon"
+respawn_delay=5
+respawn_max=0                   # restart if it dies, forever
+output_logger="logger -t mvd -p daemon.info"
+error_logger="logger -t mvd -p daemon.err"
+
+# HOME for ~/.config/mvd/config.toml. On a machine with little memory and no
+# swap, also export GOMEMLIMIT=15MiB (see docs/FAQ.md).
+export HOME=/home/mvd
+
+depend() {
+	need net localmount
+	use logger
+	after firewall
+}
+
+start_pre() {
+	# A USB drive can appear after services start: wait up to a minute.
+	n=0
+	while [ ! -x "$command" ] && [ $n -lt 30 ]; do
+		sleep 2
+		n=$((n + 1))
+	done
+	[ -x "$command" ] || { eerror "$command isn't there (is the drive mounted?)"; return 1; }
+}

@@ -1,0 +1,69 @@
+{{define "content"}}
+{{with .Data}}
+<div class="player" id="player">
+  <video id="video" src="{{index .Parts .Part}}" controls autoplay playsinline preload="metadata"
+    data-id="{{.ID}}" data-start="{{.Start}}" data-parts="{{join .Parts " "}}" data-part="{{.Part}}">
+    {{range .Subs}}{{if .VTT}}<track kind="subtitles" src="{{.VTT}}"{{if .Lang}} srclang="{{.Lang}}"{{end}} label="{{.Label}}"{{if .Forced}} default{{end}}>{{end}}{{end}}
+  </video>
+  <div class="bar-top">
+    <a class="close" href="{{.Back}}" aria-label="Close" title="Close">
+      <svg viewBox="0 0 36 36" aria-hidden="true"><path d="M7.5 7.5l21 21M28.5 7.5l-21 21" fill="none" stroke="currentColor" stroke-width="3.9" stroke-linecap="round"/></svg>
+    </a>
+    <span class="title">{{.Title}}</span>
+    {{with .Next}}<a id="next" href="/watch/{{.ID}}" hidden>Next: {{.Label}}</a>{{end}}
+  </div>
+  <div class="notice" id="cant" hidden>
+    <p>This browser can't play this file. Open this in VLC or mpv instead; they play anything:</p>
+    <a class="playurl" href="{{.PlayURL}}">{{.PlayURL}}</a>
+  </div>
+</div>
+<script>
+(() => {
+  const v = document.getElementById("video"), player = document.getElementById("player");
+  const id = v.dataset.id, start = parseFloat(v.dataset.start) || 0;
+  // A movie in parts plays them one after another, as on the Apple TV.
+  // Where you are is kept for the first part only; the end of the last is
+  // the end of the movie.
+  const parts = v.dataset.parts.split(" ");
+  let part = parseInt(v.dataset.part, 10) || 0, sent = 0;
+  const post = (body) => fetch("/api/progress/" + id, {
+    method: "POST", keepalive: true, headers: {"Content-Type": "application/json"}, body: JSON.stringify(body),
+  }).catch(() => {});
+  const report = () => {
+    if (part > 0 || !v.duration || !isFinite(v.duration)) return;
+    post({position: v.currentTime, duration: v.duration});
+  };
+  v.addEventListener("loadedmetadata", () => {
+    if (part === 0 && start > 0 && start < v.duration - 10) v.currentTime = start;
+  });
+  v.addEventListener("timeupdate", () => {
+    if (Date.now() - sent > 10000) { sent = Date.now(); report(); }
+  });
+  v.addEventListener("pause", () => { if (!v.ended) report(); });
+  v.addEventListener("ended", () => {
+    if (part + 1 < parts.length) {
+      report();
+      v.src = parts[++part];
+      v.play();
+      return;
+    }
+    if (parts.length > 1) post({watched: true}); else report();
+    const next = document.getElementById("next");
+    if (next) next.hidden = false;
+  });
+  window.addEventListener("pagehide", report);
+  v.addEventListener("error", () => { document.getElementById("cant").hidden = false; });
+  // The title bar gets out of the way while playing.
+  let idle;
+  const wake = () => {
+    player.classList.remove("idle");
+    clearTimeout(idle);
+    idle = setTimeout(() => { if (!v.paused) player.classList.add("idle"); }, 2500);
+  };
+  ["mousemove", "touchstart", "keydown"].forEach(e => player.addEventListener(e, wake));
+  v.addEventListener("play", wake);
+  v.addEventListener("pause", () => player.classList.remove("idle"));
+})();
+</script>
+{{end}}
+{{end}}

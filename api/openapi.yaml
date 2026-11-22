@@ -1,0 +1,1816 @@
+openapi: 3.1.0
+info:
+  title: mvd
+  version: "1"
+  summary: mvd's HTTP API, for the web UI and other clients (apps, players, scripts).
+  description: |
+    Everything a client needs: the library as JSON, streaming, subtitles,
+    artwork, watch progress, import, and (in builds with the `downloads` tag)
+    downloads.
+
+    **Auth.** With no `token` in config.toml there is none. With one, every
+    request needs a credential. A request's access comes from the first of
+    these it has; one that's there and wrong is a 401, and the next isn't
+    tried:
+
+    1. `Authorization: MVD1 k=KID,t=SECONDS,sig=SIG`: a signed request
+       (the Apple apps), which never sends the token.
+    2. `Authorization: Bearer TOKEN`
+    3. `?token=TOKEN` (for a URL typed into a player)
+    4. `?k=KID&sig=SIG`: a signed link, on `/stream`, `/subs`, `/art` and
+       the website's `/play` only.
+    5. The website's `mvd_session` cookie.
+
+    docs/SERVER_DEVELOPMENT.md ("The formats") says how each is made, with
+    test vectors. Every 401 has `WWW-Authenticate: MVD1`, so a client can
+    tell a server that knows signed requests from an older one. A signed
+    request's `t` must be within 300 seconds of the server's clock: when it
+    isn't (and the signature is good), the 401 says
+    `WWW-Authenticate: MVD1 error="stale"`, and the client takes the
+    server's time from that response's `Date`, signs again and tries once
+    more. A signed request's body can be at most 64 KB (413 otherwise).
+
+    **Wrong guesses.** After five wrong credentials in a row from one
+    address, anything from it that presents a credential is a 429 with
+    `Retry-After`, for a second, doubling up to a minute. A right one
+    clears it; no credential at all, or a stale `t`, isn't counted.
+
+    **Tokens.** The `[server] token` is the admin's and can use every route.
+    Each `[[server.tokens]]` entry is a viewer's: it can browse, play and
+    keep its own watch progress, and gets 403 ("this token can only watch")
+    from the routes tagged `manage` other than `/api/status`, and those
+    tagged `downloads`, `uploads` and `needs`. A viewer's token may be
+    limited to some certifications: anything else is a 404 by its id, as if
+    it weren't there, and missing from every list and count. Progress is per
+    token, so `position`, `watched`, Up Next and the rest are that token's.
+    `/api/status` says which token a request has (`access`).
+
+    **Acting as a viewer.** Any route takes the header `X-Mvd-As: NAME`
+    from the admin's token: the request is then handled as that viewer's,
+    with its progress and its limits (`mvd progress -as NAME`). From a
+    viewer's token it's a 403; a name there isn't is a 400 that lists the
+    names there are. Names match in any case.
+
+    **Changes from browsers.** POSTs whose `Sec-Fetch-Site` is `cross-site`, or
+    whose `Origin` is another host, get 403. Without a token, so do POSTs
+    addressed to a `Host` mvd doesn't expect (IPs, bare and local names are
+    fine; `host_names` adds others). Apps and command-line clients send neither
+    header and aren't affected.
+
+    **URLs in responses** (`poster`, `fanart`, `thumb`, `stream`,
+    `streams`, `subs[].url` and `vtt`, Up Next's pictures) are paths on this
+    server, to use as they are, resolved against the server's address. With
+    a token, each is a signed link (`?k=…&sig=…`) for the request's token:
+    add nothing to it. Signed links don't expire; they stop working when
+    that token changes. Without a token they're plain paths.
+
+    **Errors** are plain text unless noted; the JSON endpoints that can fail in
+    interesting ways return `{"error": "..."}`.
+  license:
+    name: (unlicensed, personal project)
+servers:
+  - url: http://{host}:{port}
+    variables:
+      host:
+        default: localhost
+      port:
+        default: "6837"
+
+security:
+  - {}
+  - mvd1: []
+  - bearer: []
+  - queryToken: []
+
+tags:
+  - name: library
+  - name: playback
+  - name: manage
+  - name: downloads
+    description: Only in builds with the `downloads` tag; 404 otherwise.
+  - name: uploads
+    description: |
+      Files sent into the import folder in pieces, resumable. Start one, then
+      PATCH pieces at the offset the server has; on any trouble, GET it to
+      find that offset and carry on. Unfinished uploads untouched for a week
+      are cleared away. With `[server] uploads = false`, or in a build without
+      the `files` tag, every one of these answers 404.
+  - name: pairing
+    description: |
+      Letting a device in without typing a token on it. The device sends an
+      X25519 public key and shows the code made from it; anyone with a
+      token approves the code (the website's Pair page, `mvd pair`, or this
+      API), giving the device their own access, or as admin a token they
+      name; the device collects that token's key id and request key, sealed
+      for it, and signs requests with them. docs/SERVER_DEVELOPMENT.md
+      ("Pairing") has the formats. In every build.
+  - name: needs
+    description: |
+      What an import left for a person, and answering it (the website's Needs
+      you). Only in builds with the `files` tag; 404 otherwise. `mvd import` at a
+      terminal asks the same questions in any build.
+
+paths:
+  /api/status:
+    get:
+      tags: [manage]
+      summary: How the server is doing
+      description: |
+        Its build, how long it's been up, its memory, the library's size (as
+        the request's token sees it), the free space on its drive, the
+        uploads under way, and which token the request has. Cheap enough to poll every few seconds.
+        `mvd status` prints it.
+      operationId: status
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Status" }
+
+  /api/up-next:
+    get:
+      tags: [library]
+      summary: What to watch
+      description: |
+        One list, at most once per movie or show, each with why it's there:
+        `continue` (part-way through: a movie, or a show's episode played
+        last), `next` (a show you've started: the episode after the one you
+        finished most recently), or `new` (a movie added in the last 30 days and not
+        watched; a show with new episodes, as the one to watch next). Newest
+        first, by when last played or when it arrived; part-watched things
+        rank as if played 12 hours later. At most 40.
+      operationId: upNext
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/UpNextItem" }
+
+  /api/up-next/{id}/remove:
+    post:
+      tags: [playback]
+      summary: Take something out of Up Next
+      description: |
+        Progress is left as it is. A movie is hidden until you next play it.
+        A show (given by its id or any of its episodes') is hidden until you
+        next play any of it or more episodes arrive. To clear a resume point,
+        post `{"position": 0}` to /api/progress/{id}.
+      operationId: removeFromUpNext
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "204":
+          description: Done
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/movies:
+    get:
+      tags: [library]
+      summary: Movies, in brief
+      description: |
+        Every movie, by title. With `since`, only those added in that time,
+        newest first (new movies: `?since=30d&unwatched=true`).
+      operationId: listMovies
+      parameters:
+        - $ref: "#/components/parameters/since"
+        - $ref: "#/components/parameters/unwatched"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MovieBrief" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/episodes/new:
+    get:
+      tags: [library]
+      summary: New episodes, one per show
+      description: |
+        For each show with episodes added in the last `since` (default 30
+        days) that you haven't watched, the first of them in watching order,
+        with how many there are. A whole season shows as its first episode
+        until that's watched, then the second. Shows with the newest arrivals
+        first; specials aren't counted. A show can also be in Up Next: a
+        client showing both should drop it from one.
+      operationId: newEpisodes
+      parameters:
+        - name: since
+          in: query
+          description: "How far back counts as new: 30d (the default), 36h... 0 for any time"
+          schema: { type: string, default: 30d }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/NewEpisode" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/search:
+    get:
+      tags: [library]
+      summary: Search the library
+      description: |
+        Movies, shows and episodes matching what's typed, best first within
+        each, at most 40 of each: show what comes, there's no paging. Every
+        client searches here, so they all find the same things.
+
+        Every word must start a word of a title (a movie's, a show's or an
+        episode's), of a movie's collection or of a director's name, or be
+        the year; the words can come in any order. Case, accents and
+        punctuation don't count: `amelie` finds "Amélie", `oceans eleven`
+        "Ocean's Eleven". A word can also carry on where the one before it
+        stopped: `god fa` finds "The Godfather", though `father` doesn't.
+        Genres, plots and cast aren't searched.
+
+        Best first: the whole title, then titles starting with what's typed,
+        then titles with every word, then matches elsewhere (a collection, a
+        director, a year). Ties are in title order. An episode matches on
+        its show's title too, after those that match on their own, so a
+        show's name finds the show and then its episodes.
+
+        While typing, wait for a pause (about 300 ms) before asking, and
+        cancel the request before.
+      operationId: search
+      parameters:
+        - name: q
+          in: query
+          description: What's typed. Empty, or nothing but punctuation, gives three empty lists.
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchResults" }
+
+  /api/shows:
+    get:
+      tags: [library]
+      summary: Every show, in brief
+      operationId: listShows
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ShowBrief" }
+
+  /api/item/{id}:
+    get:
+      tags: [library]
+      summary: One movie, show or episode, in full
+      description: |
+        `/api/movies/{id}` and `/api/shows/{id}` are the same endpoint and take
+        any id; `kind` says what came back.
+      operationId: getItem
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/movies/{id}:
+    get:
+      tags: [library]
+      summary: Same as /api/item/{id}
+      operationId: getMovie
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/shows/{id}:
+    get:
+      tags: [library]
+      summary: Same as /api/item/{id}
+      operationId: getShow
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/progress/{id}:
+    post:
+      tags: [playback]
+      summary: Report a playback position, or mark watched or unwatched
+      description: |
+        Players send `{"position", "duration"}` every so often; near enough the
+        end counts as watched, and less than `resume_after` (a minute, by
+        default) in isn't a resume point. `{"position": 0}` clears the resume
+        point, keeping watched. `{"watched": bool}` sets it outright. A show id
+        takes only `watched`, and marks every episode; `false` also brings
+        the show back to Up Next if it was taken out.
+      operationId: setProgress
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  required: [position]
+                  properties:
+                    position: { type: number, description: "seconds" }
+                    duration: { type: number, description: "seconds" }
+                - type: object
+                  required: [watched]
+                  properties:
+                    watched: { type: boolean }
+            examples:
+              position: { value: { position: 1312.5, duration: 6480 } }
+              watched: { value: { watched: true } }
+      responses:
+        "200":
+          description: The new progress (for a show, the show in brief)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Progress"
+                  - $ref: "#/components/schemas/ShowBrief"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/rescan:
+    post:
+      tags: [manage]
+      summary: Re-read the library from disk
+      operationId: rescan
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [movies, shows, episodes]
+                properties:
+                  movies: { type: integer }
+                  shows: { type: integer }
+                  episodes: { type: integer }
+
+  /api/import:
+    get:
+      tags: [needs]
+      summary: What the last import left for a person
+      description: |
+        Each item in the import folder that won't go further without
+        someone: a match the import wasn't sure of (with its candidates), no
+        match at all, something it couldn't tell is a movie or TV, a
+        duplicate, archives it can't unpack, or an item that has failed three
+        imports in a row. Kept in memory from the last import, so cheap to
+        poll; empty until an import has run since the server started.
+        `stopped` says why the last import stopped short (TMDB out of reach,
+        or the key refused), if it did.
+      operationId: listLeft
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, stopped]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/LeftItem" }
+                  stopped: { type: string }
+    post:
+      tags: [manage]
+      summary: Import what's ready, no questions asked
+      description: |
+        What mvd is sure of is filed; the rest stays in the import folder. One
+        at a time, and not while `mvd import` runs on the command line. Can
+        take a while (TMDB lookups, copying across drives).
+      operationId: runImport
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportResult" }
+        "409":
+          description: Couldn't run (already running, or not set up)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/import/search:
+    get:
+      tags: [needs]
+      summary: Search TMDB, or look up a title, to answer an item
+      description: |
+        `q` is words ("Title" or "Title (Year)"), which search TMDB for
+        `kind`, or a reference: a TMDB id ("87108" or "tmdb:87108", which
+        needs `kind`), an IMDb id ("tt7366338"), or a TMDB or IMDb page's
+        address. Words answer with `candidates`, best first; a reference with
+        the one title's `tmdb` and `kind`.
+      operationId: searchTitles
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string } }
+        - { name: kind, in: query, schema: { type: string, enum: [movie, tv] } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind: { type: string, enum: [movie, tv] }
+                  candidates:
+                    type: array
+                    items: { $ref: "#/components/schemas/Candidate" }
+                  tmdb: { type: integer, description: "A reference's title" }
+        "400":
+          description: No kind for words or a bare id, nothing found for a reference, or TMDB failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/import/details:
+    get:
+      tags: [needs]
+      summary: A title, and what importing an item as it would file
+      description: |
+        For confirming an answer: TMDB's details of the title (fetched
+        through the server, and cached for the import that follows), and,
+        read from the item without TMDB, what it would file.
+      operationId: titleDetails
+      parameters:
+        - { name: item, in: query, required: true, schema: { type: string }, description: "The item's path in the import folder" }
+        - { name: kind, in: query, required: true, schema: { type: string, enum: [movie, tv] } }
+        - { name: tmdb, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TitleDetails" }
+        "404":
+          description: The item isn't in the import folder (any more)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "400":
+          description: No such title, or TMDB failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/import/poster/{kind}/{id}:
+    get:
+      tags: [needs]
+      summary: A title's poster, small, through the server
+      description: |
+        TMDB's poster at 185 pixels wide, passed on as it comes and not kept,
+        so TMDB sees the server rather than whoever's looking.
+      operationId: titlePoster
+      parameters:
+        - { name: kind, in: path, required: true, schema: { type: string, enum: [movie, tv] } }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: The image
+          content:
+            image/jpeg: {}
+        "404":
+          description: No poster
+
+  /api/import/choose:
+    post:
+      tags: [needs]
+      summary: Settle an item, for the next import
+      description: |
+        Writes the item's `.mvd` hint (its kind and TMDB id) and starts an
+        import, which files it. Only if the item is as `sig` (from
+        `GET /api/import`) says: if it's changed or gone (answered at a
+        terminal, say), nothing is written. Only for an item that's
+        `answerable`: one hint settles one movie, or one show.
+      operationId: chooseTitle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [item, sig, kind, tmdb]
+              properties:
+                item: { type: string }
+                sig: { type: string }
+                kind: { type: string, enum: [movie, tv] }
+                tmdb: { type: integer }
+      responses:
+        "200":
+          description: Written; an import is on its way
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OK" }
+        "404":
+          description: The item isn't in the import folder any more
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: The item has changed since, or an import is running
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "400":
+          description: No kind or id, or the hint couldn't be written
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/import/retry:
+    post:
+      tags: [needs]
+      summary: Try a failed item again
+      description: Its count of failures starts over, and an import runs.
+      operationId: retryItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [item]
+              properties:
+                item: { type: string }
+      responses:
+        "200":
+          description: An import is on its way
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OK" }
+        "404":
+          description: The item isn't in the import folder any more
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/import/trash:
+    post:
+      tags: [needs]
+      summary: Move an item in the import folder to the trash
+      description: |
+        Into mvd's trash, where it stays until `trash_max_age` (deleted at
+        once if the trash is off). Not while an import is running.
+      operationId: trashItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [item]
+              properties:
+                item: { type: string }
+      responses:
+        "200":
+          description: Moved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OK" }
+        "404":
+          description: The item isn't in the import folder any more
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: An import is running
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/uploads:
+    get:
+      tags: [uploads]
+      summary: Unfinished uploads
+      description: |
+        Each file still going, and each folder not yet all in (a folder with
+        no file going right now is listed by itself, with no `id`).
+      operationId: listUploads
+      responses:
+        "200":
+          description: Newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Upload" }
+    post:
+      tags: [uploads]
+      summary: Start an upload, or find an unfinished one of the same file
+      description: |
+        A video, subtitles, an .nfo, or a .zip or .rar archive (any volume
+        of a set; the importer unpacks it); the name is cleaned to a plain file
+        name (or, in a folder, a path checked part by part). With a `fingerprint` (say name, size and modified time) that
+        matches an unfinished upload of the same size, that upload comes back
+        (200), to carry on from its `offset`. Finished, the file goes to the
+        import folder (its `movies/` or `tv/` for `kind`). The same file (or a
+        file of the same folder) started again within a week of finishing
+        comes back `done` and `already` (200): it isn't sent twice.
+
+        `mvd upload` is a client for this, and its package's documentation
+        (internal/upload) spells out the steps for writing another.
+      operationId: startUpload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, size]
+              properties:
+                name: { type: string }
+                size: { type: integer, format: int64, minimum: 1 }
+                kind: { $ref: "#/components/schemas/Kind" }
+                fingerprint: { type: string }
+                group:
+                  type: string
+                  pattern: "^[0-9a-f]{16}$"
+                  description: |
+                    For a folder: an id for it, chosen by the client, the same for
+                    every file of the folder and every time it's sent. `name` is
+                    then the file's path in the folder, starting with the
+                    folder's name. Finished files are held back until all
+                    `group_files` are in; then the folder moves into the import
+                    folder whole. A file of the group that's in already comes
+                    back `done` (200), with nothing to send.
+                group_files: { type: integer, minimum: 1, description: "How many files the folder has" }
+            example: { name: "Dune (2021).mkv", size: 4613734400, kind: movie, fingerprint: "Dune (2021).mkv|4613734400|1730246400000" }
+      responses:
+        "200":
+          description: An unfinished upload of the same file
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Upload" }
+        "201":
+          description: Started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Upload" }
+        "400":
+          description: No import folder, a name that can't be uploaded, or no size
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "507":
+          description: Not enough room on the drive
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/uploads/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, pattern: "^[0-9a-f]{16}$" }
+    get:
+      tags: [uploads]
+      summary: An unfinished upload, with how much has arrived
+      operationId: getUpload
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Upload" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [uploads]
+      summary: Send a piece
+      description: |
+        The body is written at `Upload-Offset`, which must be the upload's
+        `offset` (else 409, with the upload, to carry on from its offset).
+        At most 64 MB a piece, and no more than is left. Whatever of a piece
+        arrives is kept, even if the connection drops part way. The last byte
+        finishes the upload: it moves to the import folder and `done` is set.
+      operationId: uploadPiece
+      parameters:
+        - name: Upload-Offset
+          in: header
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/offset+octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "200":
+          description: Written
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Upload" }
+        "400":
+          description: The piece was cut short; `offset` is where it got to
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  offset: { type: integer, format: int64 }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Not at the upload's offset
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Upload" }
+        "413":
+          description: More than is left, or more than 64 MB
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      tags: [uploads]
+      summary: Cancel an upload, or a folder (by its group)
+      description: A folder's group cancels all of it, what's in and what's going.
+      operationId: cancelUpload
+      responses:
+        "204":
+          description: Gone
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/downloads:
+    get:
+      tags: [downloads]
+      summary: Transmission's downloads
+      description: In queue order, the first to start (usually the oldest) first.
+      operationId: listDownloads
+      responses:
+        "200":
+          description: |
+            OK, even when Transmission isn't set up (`configured: false`) or
+            can't be reached (`error`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Downloads" }
+    post:
+      tags: [downloads]
+      summary: Add a download
+      description: |
+        Into the import folder, or its `movies/` or `tv/` when `kind` says.
+      operationId: addDownload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source]
+              properties:
+                source:
+                  type: string
+                  description: A magnet link or a link to a .torrent file
+                kind: { $ref: "#/components/schemas/Kind" }
+            example: { source: "magnet:?xt=urn:btih:...", kind: movie }
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                source: { type: string }
+                kind: { $ref: "#/components/schemas/Kind" }
+                torrent:
+                  type: string
+                  format: binary
+                  description: A .torrent file, instead of source (8 MB at most)
+      responses:
+        "200":
+          description: Added (or already there)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [torrent, duplicate]
+                properties:
+                  torrent: { $ref: "#/components/schemas/Torrent" }
+                  duplicate:
+                    type: boolean
+                    description: Transmission already had it
+                  note:
+                    type: string
+                    description: A warning worth showing, or empty
+        "202":
+          description: |
+            Transmission took too long to answer. It has usually added it all
+            the same (setting up a big download's files on a slow drive holds
+            up the answer); the server watches for it to appear, then starts
+            it and sets its seed ratio. It shows up in the list shortly.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pending, note]
+                properties:
+                  pending: { type: boolean, const: true }
+                  note: { type: string }
+        "400":
+          description: Not set up, or nothing usable sent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/downloads/{id}/resume:
+    post:
+      tags: [downloads]
+      summary: Start a paused download again
+      description: |
+        `id` is a torrent's hash or id, or `all` for every paused download. A download
+        whose own seed limit was 0 goes back to Transmission's global limit.
+      operationId: resumeDownload
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            The torrent's hash, or its id (which Transmission gives afresh
+            each time it starts, so only from a list fetched since), or `all`.
+          schema:
+            oneOf:
+              - type: string
+                description: the hash, or all
+              - type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [resumed]
+                properties:
+                  resumed: { type: integer }
+        "400":
+          description: Not set up, no such paused download, or Transmission failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/downloads/{id}/pause:
+    post:
+      tags: [downloads]
+      summary: Pause a download, or its seeding
+      description: |
+        `id` is a torrent's hash or id, or `all` for every one going (downloading,
+        seeding, checking or queued). Resume starts it again. One paused while
+        seeding, short of `seed_ratio`, isn't imported until it's resumed and
+        gets there, or is removed.
+      operationId: pauseDownload
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            The torrent's hash, or its id (which Transmission gives afresh
+            each time it starts, so only from a list fetched since), or `all`.
+          schema:
+            oneOf:
+              - type: string
+                description: the hash, or all
+              - type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [paused]
+                properties:
+                  paused: { type: integer }
+        "400":
+          description: Not set up, no such download, or Transmission failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/downloads/{id}/verify:
+    post:
+      tags: [downloads]
+      summary: Check a download's data, then start it again
+      description: |
+        For a download Transmission reports a problem with (`error`), as
+        `mvd torrent verify`: Transmission checks what's on disk, marks what's
+        missing or wrong to download again, and starts it. `all` for every one
+        with a problem.
+      operationId: verifyDownload
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            The torrent's hash, or its id (which Transmission gives afresh
+            each time it starts, so only from a list fetched since), or `all`.
+          schema:
+            oneOf:
+              - type: string
+                description: the hash, or all
+              - type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [verifying]
+                properties:
+                  verifying: { type: integer }
+        "400":
+          description: Not set up, no such download with a problem, or Transmission failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/downloads/{id}/move:
+    post:
+      tags: [downloads]
+      summary: Move a download up or down the queue
+      description: |
+        Puts it at `position` in the list as `GET /api/downloads` orders it
+        (from 0), and so at that place in Transmission's queue; the rest
+        shuffle along. Past the end is the end.
+      operationId: moveDownload
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            The torrent's hash, or its id (which Transmission gives afresh
+            each time it starts, so only from a list fetched since).
+          schema:
+            oneOf:
+              - type: string
+              - type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [position]
+              properties:
+                position: { type: integer, minimum: 0 }
+            example: { position: 0 }
+      responses:
+        "200":
+          description: The list, in its new order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Downloads" }
+        "400":
+          description: Not set up, no position, or Transmission failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No download has that id
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/downloads/{id}:
+    delete:
+      tags: [downloads]
+      summary: Cancel a download, or stop seeding one
+      description: |
+        Takes it out of Transmission. Unfinished, what it had downloaded is
+        deleted; finished, its files stay (in the import folder, the next
+        import takes them).
+      operationId: removeDownload
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            The torrent's hash, or its id (which Transmission gives afresh
+            each time it starts, so only from a list fetched since).
+          schema:
+            oneOf:
+              - type: string
+              - type: integer
+      responses:
+        "200":
+          description: Gone
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name, deleted_data]
+                properties:
+                  name: { type: string }
+                  deleted_data:
+                    type: boolean
+                    description: It was unfinished, so its partial data went too
+        "400":
+          description: Not set up, or Transmission failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No download has that id
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/pair:
+    post:
+      tags: [pairing]
+      summary: A device asks to be let in
+      description: |
+        No credential needed. The code is the first 5 bytes of SHA-256 of
+        `public_key` in Crockford base32, so the device works it out too.
+        It waits 5 minutes. The same key again is the same request. At most
+        8 wait at once, 2 from one address: past that, 429. 409 when the
+        server has no token (there's nothing to pair) or, very rarely, when
+        another device's key gives the same code.
+      operationId: pairStart
+      security: [{}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [public_key]
+              properties:
+                public_key: { type: string, description: "32 bytes, X25519, base64url without padding" }
+                device: { type: string, description: "A name to show the admin: at most 64 characters are kept" }
+      responses:
+        "201":
+          description: Waiting for an admin
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, expires_in, page]
+                properties:
+                  code: { type: string, example: CC6WTAB6, description: "Shown to people as CC6W-TAB6" }
+                  expires_in: { type: integer, description: Seconds }
+                  page:
+                    type: string
+                    example: /pair
+                    description: |
+                      The website's Pair page, to send people to (with
+                      `?code=` for this device). Empty from a server built
+                      without the web UI, which has none: `mvd pair CODE`
+                      on the server lets the device in instead. Servers
+                      older than this field leave it out, and have `/pair`.
+        "400": { description: Bad JSON, or a key that isn't 32 bytes }
+        "409": { description: No token configured, or the code is taken }
+        "429": { description: Too many waiting, or too many wrong guesses from this address }
+    get:
+      tags: [pairing]
+      summary: The devices waiting
+      description: Admin only. Oldest first.
+      operationId: pairList
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [code, device, address, age]
+                  properties:
+                    code: { type: string }
+                    device: { type: string }
+                    address: { type: string }
+                    age: { type: integer, description: Seconds since it asked }
+
+  /api/pair/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        description: With or without the hyphen, in either case
+        schema: { type: string }
+    get:
+      tags: [pairing]
+      summary: The device asks whether it's been let in
+      description: |
+        No credential needed; poll every 2 seconds. Once approved, the
+        answer is given once, then forgotten. To open it, with the device's
+        private key: `shared = X25519(private key, server_key)`,
+        `key = HKDF-SHA256(secret: shared, salt: public_key || server_key,
+        info: "mvd pair v1", 32 bytes)`, then AES-256-GCM with `nonce` and
+        the code (8 characters, no hyphen) as additional data. Inside:
+        `{"k": KID, "name": "kids", "admin": false, "request_key": base64url}`.
+        An unknown code counts as a wrong guess.
+      operationId: pairCollect
+      security: [{}]
+      responses:
+        "200":
+          description: Approved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, server_key, nonce, sealed]
+                properties:
+                  status: { type: string, const: approved }
+                  server_key: { type: string, description: "32 bytes, X25519, base64url" }
+                  nonce: { type: string, description: "12 bytes, base64url" }
+                  sealed: { type: string, description: "base64url" }
+        "202":
+          description: Waiting
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, const: waiting }
+        "404": { description: "Unknown, expired, refused or already collected: start again with a new key" }
+        "429": { description: Too many wrong guesses from this address }
+    delete:
+      tags: [pairing]
+      summary: Refuse a device
+      description: Any token. The device's next poll is a 404.
+      operationId: pairRefuse
+      responses:
+        "204": { description: Refused }
+        "404": { description: No device is waiting with that code }
+
+  /api/pair/{code}/approve:
+    post:
+      tags: [pairing]
+      summary: Let a device in
+      description: |
+        Gives the device the access of the token asking. As admin,
+        `token` names another to give it: `admin` for the `[server]
+        token`, or a `[[server.tokens]]` name, in any case. From a viewer,
+        naming any token but its own is a 403. Check the code against the
+        device's screen first.
+      operationId: pairApprove
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token: { type: string, example: kids, description: "Admin: the token to give. Left out, the asker's own." }
+      responses:
+        "200":
+          description: Approved; the device collects it on its next poll
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string }
+                  device: { type: string }
+                  token: { type: string }
+        "400": { description: A token there isn't (the message lists them) }
+        "403": { description: A viewer naming a token that isn't its own }
+        "404": { description: No device is waiting with that code }
+
+  /stream/{id}:
+    get:
+      tags: [playback]
+      summary: The video, as it is on disk
+      description: |
+        No transcoding. Supports `Range` (seeking), `If-Range`, `HEAD` and
+        `ETag`. Hand the URL straight to a player: the API's `stream` and
+        `streams` are signed links, which need nothing added.
+      operationId: stream
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - name: part
+          in: query
+          description: For movies in several files (see `streams`); from 1
+          schema: { type: integer, minimum: 1, default: 1 }
+      responses:
+        "200":
+          description: The whole file
+          content:
+            video/*:
+              schema: { type: string, format: binary }
+        "206":
+          description: The requested range
+          content:
+            video/*:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /subs/{id}/{n}:
+    get:
+      tags: [playback]
+      summary: A sidecar subtitle file
+      description: |
+        `n` counts from 0 in the item's `subs`. Add `.vtt` (`/subs/{id}/0.vtt`)
+        for WebVTT, which browsers need; SRT is converted (and its text
+        decoded to UTF-8), other formats only if they're VTT already.
+      operationId: subtitle
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - name: n
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[0-9]+(\.vtt)?$' }
+      responses:
+        "200":
+          description: OK
+          content:
+            text/vtt: { schema: { type: string } }
+            application/x-subrip: { schema: { type: string } }
+            text/x-ssa: { schema: { type: string } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /art/{id}/{kind}:
+    get:
+      tags: [library]
+      summary: Artwork
+      description: Cached for an hour.
+      operationId: art
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - name: kind
+          in: path
+          required: true
+          description: |
+            `poster` and `fanart` for movies and shows, `season-N` for a show's
+            season poster, `thumb` for an episode
+          schema: { type: string, pattern: '^(poster|fanart|thumb|season-[0-9]+)$' }
+      responses:
+        "200":
+          description: OK
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  securitySchemes:
+    mvd1:
+      type: http
+      scheme: MVD1
+      description: |
+        A signed request: `Authorization: MVD1 k=KID,t=SECONDS,sig=SIG`, with
+        a key made from a token (or given by pairing). The token isn't sent.
+    bearer:
+      type: http
+      scheme: bearer
+      description: A `token` from config.toml
+    queryToken:
+      type: apiKey
+      in: query
+      name: token
+
+  parameters:
+    as:
+      name: X-Mvd-As
+      in: header
+      description: |
+        Any route, from the admin's token: handle the request as the
+        [[server.tokens]] entry with this name (its progress and its limits).
+        403 from a viewer's token; 400 for a name there isn't.
+      schema: { type: string }
+    since:
+      name: since
+      in: query
+      description: "Only things added in this time, newest first: 30d, 36h, 90m. 0 or absent: any time"
+      schema: { type: string }
+    unwatched:
+      name: unwatched
+      in: query
+      description: Only things not yet watched
+      schema: { type: boolean, default: false }
+    id:
+      name: id
+      in: path
+      required: true
+      description: |
+        An item id from the API: `m238` (a movie, by TMDB id), `s95396` (a
+        show), `e1234567` (an episode), or `f` and a hash for anything without
+        a TMDB id. Treat them as opaque.
+      schema: { type: string }
+
+  responses:
+    NotFound:
+      description: No such item (or its file has gone; a rescan helps)
+      content:
+        text/plain: { schema: { type: string } }
+    BadRequest:
+      description: Bad JSON, or missing fields
+      content:
+        text/plain: { schema: { type: string } }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+    Kind:
+      type: string
+      enum: [movie, tv, ""]
+      description: Movie or TV, or empty to let import work it out
+
+    Progress:
+      type: object
+      required: [updated]
+      properties:
+        position: { type: number, description: "seconds; absent when 0" }
+        duration: { type: number, description: "seconds" }
+        watched: { type: boolean }
+        updated: { type: string, format: date-time }
+        played: { type: string, format: date-time, description: "When it was last played or marked watched; absent when neither" }
+
+    Watch:
+      description: Watch progress, as carried on movies and episodes
+      type: object
+      properties:
+        watched: { type: boolean, description: "absent when false" }
+        position: { type: number, description: "seconds into it; absent when 0" }
+        duration: { type: number, description: "seconds" }
+
+    Subtitle:
+      type: object
+      required: [format, url]
+      properties:
+        lang: { type: string, description: "e.g. en" }
+        forced: { type: boolean }
+        sdh: { type: boolean }
+        format: { type: string, description: "srt, vtt, ass..." }
+        url: { type: string, description: "/subs/{id}/{n}" }
+        vtt: { type: string, description: "The WebVTT version's URL, when there is one" }
+
+    MediaFile:
+      type: object
+      description: >
+        A video file as ffprobe saw it. Only when the server has ffprobe
+        and has probed the file; tags and flags are the file's own.
+      required: [container, tracks]
+      properties:
+        container: { type: string, description: "mkv, mp4, m4v, mov, webm, avi, ts, wmv..." }
+        duration: { type: number, description: "seconds" }
+        tracks:
+          type: array
+          items: { $ref: "#/components/schemas/Track" }
+          description: Video, audio and subtitle tracks, in the file's order
+
+    Track:
+      type: object
+      required: [kind]
+      properties:
+        kind: { enum: [video, audio, subtitle] }
+        codec: { type: string, description: "ffprobe's name: h264, hevc, aac, eac3, subrip, ass, hdmv_pgs_subtitle..." }
+        lang: { type: string, description: "As the file has it, usually ISO 639-2 (eng, fre); absent when unknown" }
+        title: { type: string }
+        default: { type: boolean }
+        forced: { type: boolean }
+        hearing_impaired: { type: boolean }
+        commentary: { type: boolean }
+        channels: { type: integer, description: "audio" }
+        width: { type: integer, description: "video" }
+        height: { type: integer, description: "video" }
+
+    MovieBrief:
+      allOf:
+        - $ref: "#/components/schemas/Watch"
+        - type: object
+          required: [kind, id, title]
+          properties:
+            kind: { const: movie }
+            id: { type: string }
+            title: { type: string }
+            year: { type: integer }
+            set: { type: string, description: "The collection, e.g. \"The Godfather Collection\"" }
+            poster: { type: string, description: "/art/{id}/poster" }
+            fanart: { type: string, description: "/art/{id}/fanart" }
+            new: { type: boolean, description: "Added in the last 30 days, not watched or started; absent when false" }
+            runtime: { type: integer, description: "minutes, from TMDB" }
+            added: { type: string, format: date-time, description: "When it came into the library, for sorting" }
+            last_watched: { type: string, format: date-time, description: "When it was last played or marked watched, for sorting; absent when never" }
+
+    Movie:
+      allOf:
+        - $ref: "#/components/schemas/MovieBrief"
+        - type: object
+          properties:
+            plot: { type: string }
+            tagline: { type: string }
+            rating: { type: string, description: "certification, e.g. 15" }
+            genres: { type: array, items: { type: string } }
+            directors: { type: array, items: { type: string } }
+            streams:
+              type: array
+              items: { type: string }
+              description: /stream/{id}, then ?part=2... for movies in several files
+            files:
+              type: array
+              items: { $ref: "#/components/schemas/MediaFile" }
+              description: One for each of streams, once every one has been probed
+            subs:
+              type: array
+              items: { $ref: "#/components/schemas/Subtitle" }
+
+    Episode:
+      allOf:
+        - $ref: "#/components/schemas/Watch"
+        - type: object
+          required: [kind, id, show_id, show_title, season, episode, stream]
+          properties:
+            kind: { const: episode }
+            id: { type: string }
+            show_id: { type: string }
+            show_title: { type: string }
+            season: { type: integer, description: "0 for specials" }
+            episode: { type: integer }
+            last_episode:
+              type: integer
+              description: For a file holding several episodes, the last of them
+            title: { type: string }
+            plot: { type: string, description: "In full views and in a show's seasons" }
+            aired: { type: string, format: date }
+            runtime: { type: integer, description: "minutes" }
+            thumb: { type: string, description: "/art/{id}/thumb" }
+            stream: { type: string, description: "/stream/{id}" }
+            files:
+              type: array
+              items: { $ref: "#/components/schemas/MediaFile" }
+              maxItems: 1
+              description: Only in the full view, once the file has been probed
+            subs:
+              type: array
+              items: { $ref: "#/components/schemas/Subtitle" }
+              description: Only in the full view
+            genres:
+              type: array
+              items: { type: string }
+              description: The show's, so an episode shown on its own (in Up Next, say) has them
+            rating: { type: string, description: "The show's certificate (\"15\", \"TV-MA\")" }
+            poster: { type: string, description: "/art/{show}/season-{n}, else /art/{show}/poster; omitted if neither" }
+            fanart: { type: string, description: "/art/{show}/fanart, the show's" }
+
+    ShowBrief:
+      type: object
+      required: [kind, id, title, episode_count, unwatched]
+      properties:
+        kind: { const: show }
+        id: { type: string }
+        title: { type: string }
+        year: { type: integer }
+        poster: { type: string }
+        episode_count: { type: integer, description: "Not counting specials" }
+        unwatched: { type: integer }
+        new_count: { type: integer, description: "Of the unwatched, those added in the last 30 days; absent when none" }
+        added: { type: string, format: date-time, description: "When its newest episode came into the library (specials included), for sorting" }
+        last_watched: { type: string, format: date-time, description: "When any of its episodes was last played or marked watched, for sorting; absent when never" }
+
+    Show:
+      allOf:
+        - $ref: "#/components/schemas/ShowBrief"
+        - type: object
+          properties:
+            fanart: { type: string }
+            plot: { type: string }
+            rating: { type: string, description: "certification, e.g. 15" }
+            status: { type: string, description: "e.g. Ended, Returning Series" }
+            genres: { type: array, items: { type: string } }
+            seasons:
+              type: array
+              items: { $ref: "#/components/schemas/Season" }
+            next_episode_id:
+              type: string
+              description: >-
+                The episode to play next, as Up Next has it: the one you're
+                part-way through (played last), else the one after the
+                episode watched most recently; past the last episode, the
+                first unwatched. Never a special. Absent when everything's
+                watched.
+
+    Season:
+      type: object
+      required: [number, episodes]
+      properties:
+        number: { type: integer, description: "0 for specials" }
+        name: { type: string }
+        poster: { type: string, description: "/art/{show}/season-N" }
+        episodes:
+          type: array
+          items: { $ref: "#/components/schemas/Episode" }
+
+    Item:
+      oneOf:
+        - $ref: "#/components/schemas/Movie"
+        - $ref: "#/components/schemas/Show"
+        - $ref: "#/components/schemas/Episode"
+      discriminator:
+        propertyName: kind
+        mapping:
+          movie: "#/components/schemas/Movie"
+          show: "#/components/schemas/Show"
+          episode: "#/components/schemas/Episode"
+
+    Playable:
+      oneOf:
+        - $ref: "#/components/schemas/MovieBrief"
+        - $ref: "#/components/schemas/Episode"
+      discriminator:
+        propertyName: kind
+        mapping:
+          movie: "#/components/schemas/MovieBrief"
+          episode: "#/components/schemas/Episode"
+
+    UpNextItem:
+      description: A movie (in full) or an episode, with why it's in Up Next.
+      allOf:
+        - oneOf:
+            - $ref: "#/components/schemas/Movie"
+            - $ref: "#/components/schemas/Episode"
+          discriminator:
+            propertyName: kind
+            mapping:
+              movie: "#/components/schemas/Movie"
+              episode: "#/components/schemas/Episode"
+        - type: object
+          required: [reason]
+          properties:
+            reason: { type: string, enum: [continue, next, new] }
+            new_count: { type: integer, description: "For an episode: new episodes of its show not yet watched (omitted when none)" }
+            backdrop: { type: string, description: "The picture to feature it with: a movie's fanart, else its poster; an episode's show's fanart, else its still (omitted when none)" }
+            row_thumb: { type: string, description: "Its 16:9 picture in a list: an episode's still, else its show's fanart; a movie's is its backdrop (omitted when none)" }
+            shelf_image: { type: string, description: "Its 2:3 picture: a movie's poster, an episode's season's (else show's) poster; without one, its backdrop (omitted when none)" }
+
+    Status:
+      type: object
+      required: [version, go, platform, started, uptime, memory, goroutines, library, uploads, access]
+      properties:
+        version: { type: string, description: "The server's build (git describe), as in X-Mvd-Version" }
+        go: { type: string, description: "The Go it was built with" }
+        platform: { type: string, description: "\"linux/mips\" and the like" }
+        started: { type: string, format: date-time }
+        uptime: { type: integer, format: int64, description: Seconds since it started }
+        memory:
+          type: object
+          description: In bytes
+          required: [go, heap, gcs]
+          properties:
+            rss: { type: integer, format: int64, description: "What the system counts as in use now, as top does (Linux only)" }
+            peak_rss: { type: integer, format: int64, description: "The most it has had in use since it started (Linux only)" }
+            go: { type: integer, format: int64, description: "What the Go runtime has taken from the system" }
+            heap: { type: integer, format: int64, description: Live data }
+            gcs: { type: integer, description: Garbage collections since it started }
+        goroutines: { type: integer }
+        library:
+          type: object
+          description: What the request's token can see
+          required: [movies, shows, episodes, bytes]
+          properties:
+            movies: { type: integer }
+            shows: { type: integer }
+            episodes: { type: integer }
+            bytes: { type: integer, format: int64, description: "The videos' size" }
+        free: { type: integer, format: int64, description: "Bytes free on the library's drive (omitted where that isn't known)" }
+        uploads: { type: integer, description: "Uploads started and not yet finished (0 with uploads turned off)" }
+        cpu:
+          type: object
+          description: Linux only
+          required: [seconds, load, cores]
+          properties:
+            percent: { type: number, description: "Its share of one core over the last 10 seconds (over 100 on several cores); omitted for its first 5 seconds" }
+            seconds: { type: number, description: CPU time used since it started }
+            load:
+              type: array
+              items: { type: number }
+              description: "The system's load averages over 1, 5 and 15 minutes"
+            cores: { type: integer }
+        access:
+          type: object
+          description: The token the request has
+          required: [name, admin]
+          properties:
+            name: { type: string, description: "\"admin\" for the [server] token, a [[server.tokens]] entry's name, or \"\" with no token configured" }
+            admin: { type: boolean, description: "Whether it can use every route (true with no token configured)" }
+
+    Upload:
+      type: object
+      required: [id, name, size, started, offset, updated, done]
+      properties:
+        id: { type: string }
+        name: { type: string, description: "The file name, cleaned" }
+        size: { type: integer, format: int64 }
+        kind: { $ref: "#/components/schemas/Kind" }
+        fingerprint: { type: string }
+        started: { type: string, format: date-time }
+        offset: { type: integer, format: int64, description: "Bytes safely on the drive" }
+        updated: { type: string, format: date-time, description: "When a piece last arrived" }
+        done: { type: boolean, description: "All there, and moved to the import folder (in a folder: put by until the rest are in)" }
+        path: { type: string, description: "Where it went, once done (in a folder: the folder, once it's all in)" }
+        group: { type: string }
+        group_files: { type: integer }
+        group_done: { type: integer, description: "In a folder: how many of its files are in" }
+        already: { type: boolean, description: "Started again after it finished (within a week): nothing to send; path is where it went" }
+
+    NewEpisode:
+      allOf:
+        - $ref: "#/components/schemas/Episode"
+        - type: object
+          required: [new_count]
+          properties:
+            new_count: { type: integer, description: "New episodes of this show not yet watched, this one included" }
+
+    SearchResults:
+      type: object
+      required: [movies, shows, episodes]
+      properties:
+        movies:
+          type: array
+          items: { $ref: "#/components/schemas/MovieBrief" }
+        shows:
+          type: array
+          items: { $ref: "#/components/schemas/ShowBrief" }
+        episodes:
+          description: In brief, as a show's seasons list them, without the plot
+          type: array
+          items: { $ref: "#/components/schemas/Episode" }
+
+    LeftItem:
+      type: object
+      required: [item, name, size, sig, why, answerable, units]
+      properties:
+        item: { type: string, description: "Its path in the import folder: what answers name it by" }
+        name: { type: string }
+        size: { type: integer }
+        sig: { type: string, description: "The item as it is now, for choose to check against" }
+        problem:
+          type: string
+          enum: [no-videos, cant-unpack, not-unpackable, missing-volume]
+          description: About the whole item
+        why: { type: string, description: "What's wrong, in words" }
+        kind: { type: string, enum: [movie, tv], description: "Absent when the import couldn't tell" }
+        answerable: { type: boolean, description: "One question in it: choosing a title settles it" }
+        failures: { type: integer, description: "Imports in a row it has failed in, once that's three" }
+        units:
+          type: array
+          items:
+            type: object
+            required: [label, kind, state]
+            properties:
+              label: { type: string }
+              kind: { type: string, enum: [movie, tv] }
+              state: { type: string, enum: [filed, choose, duplicate, not-filed, failed] }
+              title: { type: string }
+              tmdb: { type: integer }
+              episodes: { type: integer }
+              duplicates: { type: integer }
+              candidates:
+                type: array
+                items: { $ref: "#/components/schemas/Candidate" }
+              error: { type: string }
+        unknown:
+          type: array
+          items: { type: string }
+          description: Videos it couldn't tell are movies or episodes
+        unfiled:
+          type: array
+          items: { type: string }
+          description: Videos not filed, when some of the item was
+
+    Candidate:
+      type: object
+      required: [tmdb, kind, title, url]
+      properties:
+        tmdb: { type: integer }
+        kind: { type: string, enum: [movie, tv] }
+        title: { type: string }
+        year: { type: integer }
+        original_title: { type: string, description: "When it differs" }
+        overview: { type: string }
+        score: { type: integer, minimum: 0, maximum: 100, description: "How well it matched the name (not on search results)" }
+        url: { type: string, description: "Its page on TMDB" }
+
+    TitleDetails:
+      type: object
+      required: [tmdb, kind, title, facts, url, into]
+      properties:
+        tmdb: { type: integer }
+        kind: { type: string, enum: [movie, tv] }
+        title: { type: string }
+        year: { type: integer }
+        original_title: { type: string }
+        overview: { type: string }
+        facts:
+          type: array
+          items: { type: string }
+          description: A movie's length and director; a show's seasons and network
+        poster: { type: string, description: "The poster's address on this server" }
+        url: { type: string, description: "Its page on TMDB" }
+        into: { type: string, description: "What importing would file: \"Into Movies\", \"8 episodes into TV, S01E01 to S01E08\"" }
+
+    OK:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean }
+
+    ImportResult:
+      type: object
+      required: [movies, episodes, left, duplicates, waiting, seeding, failed, output]
+      properties:
+        movies: { type: integer, description: "Movies filed" }
+        episodes: { type: integer, description: "Episodes filed" }
+        left: { type: integer, description: "Items left for you to sort out" }
+        duplicates: { type: integer, description: "Already in the library" }
+        waiting: { type: integer, description: "Still being written (changed in the last minute)" }
+        seeding: { type: integer, description: "Finished downloads still seeding" }
+        failed: { type: integer }
+        output: { type: string, description: "The report, as mvd import prints it" }
+
+    Torrent:
+      type: object
+      required: [id, name, hash, download_dir, status, percent_done, upload_ratio, is_finished, size, eta, rate_down, rate_up, added, peers_sending, peers_getting, seeders, leechers, queue_position]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        hash: { type: string }
+        download_dir: { type: string }
+        status:
+          type: integer
+          description: |
+            Transmission's: 0 stopped, 1 check wait, 2 checking, 3 download
+            wait, 4 downloading, 5 seed wait, 6 seeding
+          enum: [0, 1, 2, 3, 4, 5, 6]
+        percent_done: { type: number, minimum: 0, maximum: 1 }
+        upload_ratio: { type: number, description: "-1 before anything is downloaded; -2 infinite" }
+        is_finished: { type: boolean, description: "Stopped by its seed limits" }
+        error: { type: string }
+        size: { type: integer, description: "bytes" }
+        eta: { type: integer, description: "seconds; negative when unknown" }
+        rate_down: { type: integer, description: "bytes/s" }
+        rate_up: { type: integer, description: "bytes/s" }
+        added: { type: integer, description: "Unix time" }
+        peers_sending: { type: integer, description: "Peers connected and sending to us (mostly seeds)" }
+        peers_getting: { type: integer, description: "Peers connected and getting from us (leechers)" }
+        seeders: { type: integer, description: "Seeds in the swarm, as its trackers last counted; -1 when none knows" }
+        leechers: { type: integer, description: "Leechers in the swarm, as its trackers last counted; -1 when none knows" }
+        file_count: { type: integer, description: "How many files it has; absent when Transmission doesn't say (before 4.0)" }
+        queue_position: { type: integer, description: "Its place in Transmission's queue, from 0" }
+
+    Download:
+      allOf:
+        - $ref: "#/components/schemas/Torrent"
+        - type: object
+          required: [state, details, ready, paused, active, in_import]
+          properties:
+            state: { type: string, description: 'In words: "Downloading, 43%, 12 min left"' }
+            details: { type: string, description: 'In words: "4.2 GB · ratio 0.12 · seeds 3 of 40 · leechers 1 of 12"' }
+            ready: { type: boolean, description: "Finished and seeded; the next import takes it" }
+            paused: { type: boolean, description: "Stopped for no good reason; can be resumed" }
+            active: { type: boolean, description: "Going (downloading, seeding, checking, queued); can be paused" }
+            in_import: { type: boolean, description: "Downloading into the import folder" }
+
+    Downloads:
+      type: object
+      required: [configured, seed_ratio, torrents]
+      properties:
+        configured: { type: boolean, description: "[downloads] transmission is set" }
+        error: { type: string, description: "Transmission couldn't be reached, or failed" }
+        seed_ratio: { type: number }
+        torrents:
+          type: array
+          items: { $ref: "#/components/schemas/Download" }
+          description: Newest first

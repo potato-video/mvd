@@ -1,0 +1,254 @@
+{{define "content"}}
+{{/* Incoming: everything on its way into the library, and what needs you.
+   The list (#incoming) is polled every 5 seconds; incoming.js sends
+   uploads, takes drops anywhere on the page, and overlays this browser's
+   uploads on the list. */}}
+{{with .Data}}
+<div class="wrap incoming" id="incoming-page"{{if .Uploads}} data-uploads data-exts="{{.Accept}}"{{end}}{{if .Torrents}} data-torrents{{end}}>
+  <div class="page-head inc-head">
+    <h1>Incoming</h1>
+    {{template "space" .}}
+  </div>
+
+  {{if or .Torrents .Uploads}}
+  <div class="add-bar">
+    {{if .Torrents}}
+    <form class="add-link" hx-post="/ui/downloads" hx-target="#incoming" hx-swap="outerHTML"
+      hx-on:download-added="this.reset()" hx-disabled-elt="find button">
+      <input class="search" type="text" name="source" placeholder="Paste a magnet link or a .torrent link"
+        aria-label="Magnet link or .torrent link" autocomplete="off" required>
+      <button class="btn" type="submit">Add</button>
+    </form>
+    {{end}}
+    {{if .Uploads}}
+    <p class="add-hint">{{if .Torrents}}or drop{{else}}Drop{{end}} files and folders anywhere on this page
+      (<label class="pick">choose files<input type="file" id="pick" multiple accept="{{.Accept}}"></label>
+      · <label class="pick">a folder<input type="file" id="pickdir" webkitdirectory></label>)</p>
+    {{end}}
+  </div>
+  {{else}}
+  <div class="empty">
+    <strong>Nothing can come in yet</strong>
+    {{if .TorrentsOff}}Downloads need Transmission: run <code>mvd setup transmission</code> on the router for the
+    commands to install and set it up, then add its address to config.toml:
+    <pre>[downloads]
+transmission = "http://127.0.0.1:9091/transmission/rpc"</pre>
+    {{end}}
+    Uploads are off: set <code>uploads = true</code> under <code>[server]</code> in config.toml.
+    Anything copied into the import folder is still imported.
+  </div>
+  {{end}}
+
+  {{template "incoming" .}}
+</div>
+<div class="drop-veil" id="drop-veil" hidden><p>Drop to add</p></div>
+<dialog class="import-dialog" id="import-dialog" aria-labelledby="dlg-title"><div id="import-dialog-body"></div></dialog>
+<dialog class="import-dialog small" id="trash-dialog" aria-labelledby="trash-h">
+  <form class="dlg-main" hx-post="/ui/incoming/empty-trash" hx-target="#incoming" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
+    <h2 id="trash-h">Empty the trash?</h2>
+    <p class="dlg-plot">Everything in mvd's trash (<span class="trash-size"></span>: what imports cleared away, and
+      what was moved there from this page) is deleted for good, now rather than when it's old enough.</p>
+    <div class="dlg-buttons">
+      <button class="btn danger" type="submit">Empty the Trash</button>
+      <button class="btn" type="button" data-close>Cancel</button>
+    </div>
+  </form>
+</dialog>
+{{end}}
+<script src="/static/incoming.js?v={{ver}}"></script>
+{{end}}
+
+{{/* The head's figures: refreshed with the list (out of band). */}}
+{{define "space"}}<p class="inc-space count" id="inc-space">{{template "spacebody" .}}</p>{{end}}
+
+{{/* Free space, and what's in the trash: a button that offers to empty it. */}}
+{{define "spacebody"}}{{.Free}}{{if and .Free .Trash}} · {{end}}
+  {{- with .Trash}}<button class="link-btn" type="button" data-open="trash-dialog" data-size="{{.}}">{{.}} in trash</button>{{end}}{{end}}
+
+{{/* What a poll answers: the list, the head's figures, and the nav's count. */}}
+{{define "poll"}}
+{{template "incoming" .}}
+<p class="inc-space count" id="inc-space" hx-swap-oob="true">{{template "spacebody" .}}</p>
+<span class="nav-count" id="nav-needs" hx-swap-oob="true"{{if not .Needs}} hidden{{end}} title="Needs you">{{len .Needs}}</span>
+{{end}}
+
+{{define "incoming"}}
+{{/* Not refreshed mid-drag (incoming.js reorders the queue by dragging). */}}
+<div id="incoming" hx-get="/ui/incoming" hx-trigger="every 5s [!document.querySelector('#incoming.dragging')], incoming-changed from:body"
+  hx-swap="outerHTML">
+  {{range .Banners}}<p class="flash bad banner">{{.}}</p>{{end}}
+  {{with .Message}}<p class="flash{{if $.MessageBad}} bad{{end}}" role="status">{{.}}</p>{{end}}
+  {{/* Two columns when there's room, Needs you always beside the list;
+     on a phone, one, Needs you first, and only when something does. */}}
+  <div class="inc-cols">
+    <section class="needs{{if not .Needs}} none{{end}}" aria-labelledby="needs-h">
+      <h2 id="needs-h">Needs you</h2>
+      {{range .Needs}}{{template "need" .}}{{end}}
+      {{if not .Needs}}<p class="inc-empty">Nothing needs you.</p>{{end}}
+    </section>
+    <section class="inc-list" aria-label="Incoming">
+      {{if or .ImportNow (gt .Going 0) (gt .Paused 0)}}
+      <div class="inc-tools">
+        {{if .ImportNow}}<button class="btn small" type="button" hx-post="/ui/import" hx-target="#incoming" hx-swap="outerHTML"
+          hx-disabled-elt="this">Import now</button>{{end}}
+        {{if gt .Going 0}}<button class="btn small" type="button" hx-post="/ui/downloads/all/pause" hx-target="#incoming" hx-swap="outerHTML">Pause all</button>
+        {{- else if gt .Paused 0}}<button class="btn small" type="button" hx-post="/ui/downloads/all/resume" hx-target="#incoming" hx-swap="outerHTML">Resume all</button>{{end}}
+      </div>
+      {{end}}
+      <ul class="inc-rows" id="inc-rows">
+        {{range .Rows}}{{template "row" .}}{{end}}
+      </ul>
+      <p class="inc-empty" id="inc-none"{{if .Rows}} hidden{{end}}>Nothing coming in.
+        {{- if and .Torrents .Uploads}} Paste a link or drop files here.{{else if .Torrents}} Paste a link here.{{else if .Uploads}} Drop files here.{{end}}</p>
+    </section>
+  </div>
+</div>
+{{end}}
+
+{{define "row"}}
+<li class="inc-row{{if .Stopped}} stopped{{end}}" id="{{.Key}}"{{if .Upload}} data-upload="{{.Upload}}"{{end}}
+  {{- if .Drag}} data-drag data-id="{{.Torrent}}"{{end}}>
+  <span class="inc-handle" aria-hidden="true">{{if .Drag}}{{template "icon" "grip"}}{{end}}</span>
+  <div class="inc-main">
+    <div class="inc-name">{{.Name}}</div>
+    <div class="inc-line">{{.Line}}</div>
+    {{if ge .Pct 0}}<div class="inc-bar{{if .Idle}} idle{{end}}"><span class="inc-track"><span style="width:{{.Pct}}%"></span></span><span class="pct">{{.Pct}}%</span></div>{{end}}
+    {{if .HasFacts}}<div class="inc-facts">{{range .Facts}}<dl>{{range .}}<dt>{{.Label}}</dt><dd>{{.Value}}</dd>{{end}}</dl>{{end}}</div>{{end}}
+  </div>
+  <div class="inc-actions">
+    {{- /* The fold is kept as it is across refreshes (hx-preserve), so it
+       stays open; the facts it shows, above, are replaced. */}}
+    {{if .HasFacts}}<details class="inc-info" id="info-{{.Key}}" hx-preserve><summary class="icon-btn" title="Details" aria-label="Details">{{template "icon" "info"}}</summary></details>{{end}}
+    {{if .Pause}}<button class="icon-btn" type="button" title="Pause" aria-label="Pause {{.Name}}"
+      hx-post="/ui/downloads/{{.Torrent}}/pause" hx-target="#incoming" hx-swap="outerHTML">{{template "icon" "pause"}}</button>
+    {{- else if .Resume}}<button class="icon-btn" type="button" title="Resume" aria-label="Resume {{.Name}}"
+      hx-post="/ui/downloads/{{.Torrent}}/resume" hx-target="#incoming" hx-swap="outerHTML">{{template "icon" "play"}}</button>{{end}}
+    {{if and .Cancel .Upload}}<button class="icon-btn" type="button" title="Cancel" aria-label="Cancel {{.Name}}" data-cancel-upload="{{.Upload}}"
+      hx-delete="/ui/uploads/{{.Upload}}" hx-target="#incoming" hx-swap="outerHTML"
+      hx-confirm="Cancel uploading {{.Name}}? What's arrived so far is deleted.">{{template "icon" "x"}}</button>
+    {{- else if .Cancel}}<button class="icon-btn" type="button" title="Cancel" aria-label="Cancel {{.Name}}"
+      hx-delete="/ui/downloads/{{.Torrent}}" hx-target="#incoming" hx-swap="outerHTML"
+      hx-confirm="Cancel {{.Name}}? What it has downloaded so far is deleted.">{{template "icon" "x"}}</button>{{end}}
+    {{if and .Trash .Torrent}}<button class="icon-btn" type="button" title="Move to the trash" aria-label="Move {{.Name}} to the trash"
+      hx-post="/ui/downloads/{{.Torrent}}/trash" hx-target="#incoming" hx-swap="outerHTML"
+      hx-confirm="Move {{.Name}} to the trash? It stops seeding and leaves Transmission.">{{template "icon" "trash"}}</button>
+    {{- else if .Trash}}{{template "trashitem" .}}{{end}}
+  </div>
+</li>
+{{end}}
+
+{{/* 🗑 for an item in the import folder: a form, so its path goes as a
+   value, never into a script or a URL. */}}
+{{define "trashitem"}}<form class="inline" hx-post="/ui/incoming/trash" hx-target="#incoming" hx-swap="outerHTML"
+  hx-confirm="Move {{.Name}} to the trash?"><input type="hidden" name="item" value="{{.Item}}">
+  <button class="icon-btn" type="submit" title="Move to the trash" aria-label="Move {{.Name}} to the trash">{{template "icon" "trash"}}</button></form>{{end}}
+
+{{/* A card in Needs you. Kept as it is across refreshes (hx-preserve), so
+   a search's results and what's typed stay; its id changes with the item,
+   so a changed item gets a new card, and one dealt with goes. */}}
+{{define "need"}}
+<article class="need" id="{{.Key}}" data-item="{{.Item}}" hx-preserve>
+  <span class="need-mark" aria-hidden="true">!</span>
+  <div class="need-main">
+    <h3 class="need-name">{{.Name}}</h3>
+    <p class="need-line">{{if .Size}}{{size .Size}} · {{end}}{{.Line}}{{if .Seeding}} It's still seeding: a choice waits for that to finish.{{end}}</p>
+    {{with .Left}}
+      {{if .Answerable}}
+        <ul class="cands" id="cands-{{$.Key}}">
+          {{range .Units}}{{template "candlist" (cands $.Left .Candidates)}}{{end}}
+        </ul>
+        <form class="need-search" hx-get="/ui/import/search" hx-target="#cands-{{$.Key}}" hx-swap="innerHTML">
+          <input type="hidden" name="item" value="{{.Item}}"><input type="hidden" name="sig" value="{{.Sig}}">
+          {{if .Kind}}<input type="hidden" name="kind" value="{{.Kind}}">
+          {{else}}<fieldset class="need-kind"><legend>Is it a movie or TV?</legend>
+            <label><input type="radio" name="kind" value="movie" required> Movie</label>
+            <label><input type="radio" name="kind" value="tv"> TV</label></fieldset>{{end}}
+          <input class="search" type="search" name="q" placeholder="Search TMDB, or a TMDB or IMDb id or link"
+            aria-label="Search TMDB, or a TMDB or IMDb id or link" autocomplete="off" required>
+        </form>
+      {{else if .Failures}}
+      {{else if gt (len .Units) 1}}
+        <p class="need-note">One answer can't settle all of this: run <code>mvd import</code> at a terminal to choose,
+          or split it into separate items.</p>
+      {{end}}
+      {{with .Unfiled}}<ul class="need-files">{{range .}}<li>{{.}}</li>{{end}}</ul>{{end}}
+    {{end}}
+  </div>
+  <div class="need-actions">
+    {{if .Problem}}
+      <button class="btn small" type="button" hx-post="/ui/downloads/{{.Torrent}}/verify" hx-target="#incoming" hx-swap="outerHTML">Verify</button>
+      <button class="icon-btn" type="button" title="Cancel" aria-label="Cancel {{.Name}}" hx-delete="/ui/downloads/{{.Torrent}}"
+        hx-target="#incoming" hx-swap="outerHTML" hx-confirm="Cancel {{.Name}}? What it has downloaded so far is deleted.">{{template "icon" "x"}}</button>
+    {{else}}
+      {{if and .Left .Left.Failures}}<form class="inline" hx-post="/ui/import/retry" hx-target="#incoming" hx-swap="outerHTML">
+        <input type="hidden" name="item" value="{{.Item}}"><button class="btn small" type="submit">Try again</button></form>{{end}}
+      {{if .Torrent}}<button class="icon-btn" type="button" title="Move to the trash" aria-label="Move {{.Name}} to the trash"
+        hx-post="/ui/downloads/{{.Torrent}}/trash" hx-target="#incoming" hx-swap="outerHTML"
+        hx-confirm="Move {{.Name}} to the trash? It leaves Transmission.">{{template "icon" "trash"}}</button>
+      {{- else if .Item}}{{template "trashitem" .}}{{end}}
+    {{end}}
+  </div>
+</article>
+{{end}}
+
+{{/* A card's titles: each opens the dialog to confirm it. */}}
+{{define "candlist"}}{{$c := .}}{{range .Candidates}}
+<li class="cand">
+  <button class="cand-pick" type="button" hx-get="/ui/import/details?item={{urlquery $c.Item}}&amp;sig={{urlquery $c.Sig}}&amp;kind={{.Kind}}&amp;tmdb={{.TMDB}}"
+    hx-target="#import-dialog-body" hx-swap="innerHTML">
+    <span class="cand-title">{{.Title}}{{with .Year}} ({{.}}){{end}}</span>
+    {{with .Score}}<span class="cand-score">{{.}}%</span>{{end}}
+    {{with .OriginalTitle}}<span class="cand-orig">({{.}})</span>{{end}}
+    {{with .Overview}}<span class="cand-plot">{{.}}</span>{{end}}
+  </button>
+  <a class="cand-link" href="{{.URL}}" target="_blank" rel="noopener" title="{{.Title}} on TMDB" aria-label="{{.Title}} on TMDB">{{template "icon" "out"}}</a>
+</li>
+{{- end}}{{end}}
+
+{{/* A search's answer, in place of a card's titles. */}}
+{{define "cands"}}{{if .Error}}<li class="cand-err" role="alert">{{.Error}}</li>{{else}}{{template "candlist" .}}{{end}}{{end}}
+
+{{/* The dialog that confirms a title: the poster, the facts, the plot,
+   and what importing would file. */}}
+{{define "dialog"}}
+<div class="dlg" data-item="{{.Item}}">
+  {{if .Error}}
+  <div class="dlg-main">
+    <p class="dlg-err" role="alert">{{.Error}}</p>
+    <div class="dlg-buttons"><button class="btn" type="button" data-close>Close</button></div>
+  </div>
+  {{else}}
+  <div class="dlg-poster">{{with .Poster}}<img src="{{.}}" alt="" width="185" height="278">{{end}}</div>
+  <div class="dlg-main">
+    <h2 id="dlg-title">{{.Title}}{{with .Year}} ({{.}}){{end}}</h2>
+    {{with .OriginalTitle}}<p class="dlg-orig">{{.}}</p>{{end}}
+    {{with .Facts}}<p class="dlg-facts">{{join . " · "}}</p>{{end}}
+    {{with .Overview}}<p class="dlg-plot">{{.}}</p>{{end}}
+    <p class="dlg-into">{{.Into}}{{with .Name}} <span class="dlg-from">from {{.}}</span>{{end}}</p>
+    <p class="dlg-err" id="import-dialog-err" role="alert"></p>
+    <form class="dlg-buttons" hx-post="/ui/import/choose" hx-target="#incoming" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
+      <input type="hidden" name="item" value="{{.Item}}"><input type="hidden" name="sig" value="{{.Sig}}">
+      <input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="tmdb" value="{{.TMDB}}">
+      <input type="hidden" name="title" value="{{.Title}}{{with .Year}} ({{.}}){{end}}">
+      <button class="btn play-plain" type="submit">Import</button>
+      <button class="btn" type="button" data-close>Cancel</button>
+    </form>
+    <a class="dlg-tmdb" href="{{.URL}}" target="_blank" rel="noopener"><img src="/static/tmdb.svg?v={{ver}}" alt="TMDB" width="106" height="8">
+      <span>{{.Title}} on TMDB</span></a>
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "dialogerr"}}{{.}}{{end}}
+
+{{define "icon"}}
+{{- if eq . "info"}}<span class="icon-i" aria-hidden="true">i</span>
+{{- else if eq . "pause"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+{{- else if eq . "play"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z" fill="currentColor"/></svg>
+{{- else if eq . "x"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+{{- else if eq . "trash"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 7V4.5h4V7M6.5 7l1 13h9l1-13M10 11v6M14 11v6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{{- else if eq . "out"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5H5V6h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{{- else if eq . "grip"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></g></svg>
+{{- end}}
+{{- end}}

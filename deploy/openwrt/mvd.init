@@ -1,0 +1,30 @@
+#!/bin/sh /etc/rc.common
+# procd service for mvd server on OpenWRT. 'mvd setup service' prints it with
+# PROG filled in:
+#
+#   mvd setup service > /etc/init.d/mvd && chmod +x /etc/init.d/mvd
+#   /etc/init.d/mvd enable && /etc/init.d/mvd start
+#   logread -e mvd          # its log
+#
+# Add /etc/init.d/mvd to /etc/sysupgrade.conf to keep it across upgrades.
+
+START=99
+STOP=10
+USE_PROCD=1
+
+PROG=/mnt/drive/bin/mvd    # wherever the binary lives (on the USB drive, say)
+
+start_service() {
+	procd_open_instance
+	# The USB drive can mount after services start, so wait for it.
+	procd_set_param command /bin/sh -c "while [ ! -x '$PROG' ]; do sleep 5; done; exec '$PROG' server"
+	# HOME for ~/.config/mvd/config.toml. GOMEMLIMIT: Go collects harder to
+	# stay under 15MB, so it leaves room for Transmission (it can go over if it
+	# truly needs more). Add GODEBUG=gctrace=1 to log each collection
+	# (logread -e mvd).
+	procd_set_param env HOME=/root GOMEMLIMIT=15MiB
+	procd_set_param respawn 3600 5 0  # restart if it dies, forever
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}

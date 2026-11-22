@@ -1,0 +1,52 @@
+{{define "content"}}
+{{/* Up Next, as on the Apple TV (UpNextPage.swift): the list on the left, full height, and
+   the selected entry featured beside it, its backdrop running on under
+   the list's edge. A click or focus on a row features it (not hover: the
+   feature shouldn't flicker as the pointer crosses the list); a click on
+   the featured row plays it, as does Enter; ↑ and ↓ move along the list. */}}
+{{with .Data}}
+<div class="{{if .Items}}upnext{{else}}wrap{{end}}" id="home">
+{{if .Items}}
+  <section class="queue">
+    <ul role="listbox" aria-label="Up Next">
+    {{range $i, $it := .Items}}
+      <li class="qrow" id="c-{{.Key}}" role="option" tabindex="{{if $i}}-1{{else}}0{{end}}"
+        aria-selected="{{if $i}}false{{else}}true{{end}}" data-key="{{.Key}}" data-play="{{.PlayHref}}">
+        <div class="pic">
+          {{if .Thumb}}<img src="{{.Thumb}}" alt="" loading="lazy">{{else}}<div class="blank">{{.Title}}</div>{{end}}
+          {{if .Pct}}{{template "clearband" (band .ID .Title .Pos .Dur "home" "")}}{{end}}
+        </div>
+        <div class="qtext">
+          <span class="pill {{.Reason}}">{{.Label}}</span>
+          <div class="qtitle">{{.Title}}</div>
+          {{with .Sub}}<div class="qsub">{{.}}</div>{{end}}
+          {{if .Pct}}<div class="meter"><span style="width:{{.Pct}}%"></span></div>{{end}}
+        </div>
+      </li>
+    {{end}}
+    </ul>
+  </section>
+
+  <div class="features" aria-live="polite">
+  {{range $i, $it := .Items}}
+    <section class="feature" id="f-{{.Key}}"{{if $i}} hidden{{end}}>
+      <div class="backdrop">{{with .Backdrop}}<img src="{{.}}" alt="" loading="lazy">{{end}}</div>
+      {{template "hero" .Hero}}
+    </section>
+  {{end}}
+  </div>
+  <script src="/static/home.js?v={{ver}}"></script>
+{{else if .Empty}}
+  <div class="empty">
+    <strong>Nothing here yet</strong>
+    Put movies and episodes in the import folder and run <code>mvd import</code>. They'll be matched, renamed and filed here.
+  </div>
+{{else}}
+  <div class="empty">
+    <strong>All caught up</strong>
+    Nothing new, and nothing part-watched. Find something in <a href="/tv">TV</a> or <a href="/movies">Movies</a>.
+  </div>
+{{end}}
+</div>
+{{end}}
+{{end}}

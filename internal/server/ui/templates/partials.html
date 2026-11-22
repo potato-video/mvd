@@ -1,0 +1,95 @@
+{{/* A poster: movies and shows. The picture and the name are links; the
+   clear strip sits beside them (a button can't go inside a link). In the
+   corner, as on the Apple TV: "new" or "3 new" in red, else "watched". */}}
+{{define "tall"}}
+<div class="card{{if .Watched}} watched{{end}}"{{with .Key}} id="c-{{.}}"{{end}}>
+  <div class="pic">
+    <a class="pic-link" href="{{or .PlayHref .Href}}" tabindex="-1" aria-hidden="true"{{if .PlayHref}} hx-boost="false"{{end}}>
+      {{if .Img}}<img src="{{.Img}}" alt="" loading="lazy">{{else}}<div class="blank">{{.Title}}</div>{{end}}
+    </a>
+    {{with .Pill}}<span class="pill corner{{if $.PillNew}} new{{end}}">{{.}}</span>{{end}}
+    {{template "cardbar" .}}
+  </div>
+  <a class="name" href="{{.Href}}">{{.Title}}</a>
+  {{if .Sub}}<div class="sub">{{.Sub}}</div>{{end}}
+</div>
+{{end}}
+
+{{/* A card's progress bar, with the strip that clears it. */}}
+{{define "cardbar"}}
+{{if .Pct}}
+  <div class="bar"><span style="width:{{.Pct}}%"></span></div>
+  {{if .ID}}{{template "clearband" (band .ID .Title .Pos .Dur .Target "")}}{{end}}
+{{end}}
+{{end}}
+
+{{/* The bottom of a picture in progress: hover it for "5m of 1h32 · Clear
+   progress", click to clear (no confirmation). Not on touch screens, where
+   a tap meant to play would clear instead. Clearing re-renders .Target
+   (and .OOB, if set) from the current page. */}}
+{{define "clearband"}}
+<button class="clearband" type="button" aria-label="Clear progress: {{.Title}}"
+  hx-post="/ui/progress/{{.ID}}/clear" hx-target="#{{.Target}}" hx-select="#{{.Target}}" hx-swap="outerHTML"
+  {{- with .OOB}} hx-select-oob="#{{.}}"{{end}}>
+  <span>{{short .Pos}}{{if .Dur}} of {{short .Dur}}{{else}} in{{end}}</span>
+  <span class="act">Clear progress</span>
+</button>
+{{end}}
+
+{{/* The watched toggle: the TV's cornflower button, watched or not, with
+   its circled tick, filled once watched. Watched forgets how far in it was,
+   so it re-renders .Target (and .OOB) from the page: Resume and the
+   progress line change. */}}
+{{define "watched"}}
+<button class="btn secondary{{if .Small}} small{{end}}" type="button" aria-pressed="{{if .Watched}}true{{else}}false{{end}}"
+  hx-post="/ui/watched/{{.ID}}" hx-vals='{"watched": "{{if .Watched}}0{{else}}1{{end}}"}'
+  hx-target="#{{.Target}}" hx-select="#{{.Target}}" hx-swap="outerHTML"
+  {{- with .OOB}} hx-select-oob="#{{.}}"{{end}}>
+  {{- if .Watched}}<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="9" fill="currentColor"/><path d="M6 10.4l2.7 2.6L14 7.6" fill="none" stroke="var(--btn-bg)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Watched
+  {{- else}}<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6 10.4l2.7 2.6L14 7.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Mark as Watched{{end}}</button>
+{{end}}
+
+{{/* The hero, as the Apple TV app's HeroView: what's over the backdrop on Up Next's
+   feature and the movie and show pages. The poster (not on Up Next), then
+   Up Next's pill, the title with its certificate after it, an episode's
+   line, the facts, the plot, and last how far in, the buttons and the
+   .m3u's address, so on Up Next the buttons stay put from entry to entry. */}}
+{{define "hero"}}
+<div class="hero-in{{if .WithPoster}} with-poster{{end}}">
+  {{if .WithPoster}}<div class="poster">{{with .Poster}}<img src="{{.}}" alt="">{{end}}</div>{{end}}
+  <div class="hero-text">
+    {{with .Label}}<span class="pill {{$.Reason}}">{{.}}</span>{{end}}
+    {{/* The word joiner keeps the certificate on the line with the last word. */}}
+    <h1>{{if .Href}}<a href="{{.Href}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}{{with .Rating}}&#8288;<span class="cert">{{.}}</span>{{end}}</h1>
+    {{with .Line}}<div class="line">{{.}}</div>{{end}}
+    {{if or .Facts .Genres}}<div class="facts">{{join .Facts " · "}}{{with .Genres}}<span class="genres">{{if $.Facts}} · {{end}}{{join . ", "}}</span>{{end}}</div>{{end}}
+    {{with .Plot}}<p class="plot">{{.}}</p>{{end}}
+    {{with .Play}}{{template "playactions" .}}{{end}}
+  </div>
+</div>
+{{end}}
+
+{{/* How far in, set a little apart over the buttons and as wide as them
+   ("38m left"; hover offers to clear it, a click clears), then the gold
+   Play or Resume and at most one other button, then the .m3u's address,
+   for VLC or mpv. */}}
+{{define "playactions"}}
+<div class="go">
+  {{if .Pct}}
+  <button class="progress" type="button" aria-label="Clear progress: {{.Title}}"
+    hx-post="/ui/progress/{{.ID}}/clear" hx-target="#{{.Target}}" hx-select="#{{.Target}}" hx-swap="outerHTML"
+    {{- with .OOB}} hx-select-oob="#{{.}}"{{end}}>
+    <span class="meter"><span style="width:{{.Pct}}%"></span></span>
+    <span>{{short .Left}} left</span>
+    <span class="act">Clear progress</span>
+  </button>
+  {{end}}
+  <div class="actions">
+    <a class="btn play" href="{{.Href}}" hx-boost="false">{{.Label}}</a>
+    {{with .Toggle}}{{template "watched" .}}{{end}}
+    {{if .Remove}}<button class="btn secondary" type="button" hx-post="/ui/up-next/{{.ID}}/remove"
+      hx-target="#{{.Target}}" hx-select="#{{.Target}}" hx-swap="outerHTML">Remove from Up Next</button>{{end}}
+  </div>
+  <a class="playurl" href="{{.PlayURL}}" hx-boost="false">{{.PlayURL}}</a>
+</div>
+{{end}}

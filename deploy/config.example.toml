@@ -1,0 +1,78 @@
+# mvd configuration: ~/.config/mvd/config.toml
+#
+#   mvd setup config > ~/.config/mvd/config.toml
+#
+# Every setting goes under its [section]. Anything after a # is a comment, and
+# paths may start with ~/. A commented-out setting shows its default, or an
+# example where there's none.
+
+[paths]
+# The library: holds movies/, tv/, import/ and .trash/
+video_dir = "/mnt/drive/video"
+#movies_dir = "/mnt/drive/video/movies"   # set any of these to override video_dir
+#tv_dir     = "/mnt/drive/video/tv"
+#import_dir = "/mnt/drive/video/import"   # keep it on the same drive as the library
+#trash_dir  = "/mnt/drive/video/.trash"   # what's left of an import: samples, release .nfo and .txt files
+
+# mvd's own files, which default to ~/.config/mvd. On a router, point data_dir
+# at the drive: the state file is rewritten every few seconds while something
+# plays, and flash is small and wears.
+data_dir = "/mnt/drive/.mvd"
+#cache_dir  = "~/.config/mvd/cache"        # TMDB responses, pruned after 30 days
+#state_file = "~/.config/mvd/state.json"   # watch progress
+#index_file = "~/.config/mvd/index.json"   # library index, for a quick start
+
+[library]
+#auto_import    = true    # the server imports by itself: finished uploads and downloads, and anything copied in; false: only mvd import
+#resume_after   = "1m"    # a glance shorter than this doesn't leave something "in progress"
+#trash_max_age  = "7d"    # older leftovers are deleted ("36h", "7d"); 0 turns the trash off
+#trash_max_size = "2GB"   # past this, the oldest go first ("500MB", "2GB"); 0 turns the trash off
+
+[server]
+#address = ""       # where mvd server listens; every interface if empty, "127.0.0.1" for this machine only
+#port    = 6837
+#token   = "something-long"        # the admin's: every request then needs a token. mvd setup token makes one
+#host_names = "media.example.com"  # without a token: real domain names you reach it by
+
+# Uploads from the web UI's Files page (and /api/uploads), into the import folder.
+#uploads = true           # false: no uploader, and /api/uploads answers 404
+#upload_preallocate = false   # true: give a file its full size before the first piece. Reserves the
+                              # space where the drive can do that quickly (ext4, APFS); on exFAT it
+                              # means writing the whole size in zeros first, so leave it off there
+#upload_buffer = "256KB"  # memory each piece is written through (4KB to 64MB)
+
+# mDNS/DNS-SD (Bonjour on Apple, Avahi on Linux): the server announces itself
+# on the local network (_mvd._tcp), so the Apple TV app finds it without
+# anyone typing an address.
+#mdns = true
+#mdns_name = "Living room"     # what the apps show; the machine's name by default
+#mdns_interfaces = "br-lan"    # only on these; every private network by default. On a
+                               # router whose WAN is a private network too, name the LAN
+
+# More tokens, for other people and devices: each can browse, play and keep
+# its own watch progress, and nothing more. Repeat the block for each. They
+# need the token above as well. Keep them last in [server].
+#[[server.tokens]]
+#name    = "kids"                   # letters, digits, spaces, - and _
+#token   = "another-long-random-token"   # mvd setup token NAME makes an entry
+#ratings = ["U", "PG"]              # only these certifications, as tmdb.region has them; leave out for all
+#unrated = false                    # with ratings: whether it sees things with no certification
+
+[tmdb]
+api_key = "your-key-here"   # v3 key or v4 read access token (or set TMDB_API_KEY)
+#language = "en-US"         # metadata language
+#region   = "GB"            # whose certificates to use (BBFC)
+
+# Downloads, via Transmission ('mvd setup transmission' prints the router side).
+[downloads]
+#transmission  = "http://127.0.0.1:9091/transmission/rpc"
+#username      = ""    # if Transmission wants a login
+#password      = ""
+#seed_ratio    = 1.0   # seed to this ratio before importing; 0: import at once
+#max_downloads = 2     # at most this many downloading at once, the rest queued (mvd setup
+                       # transmission sets it in Transmission); 0 leaves Transmission's own
+
+# On another machine: where mvd upload (and progress, status) find the server.
+# Unset, they use the one they find on the local network, if there's just one.
+[client]
+#server = "http://router:6837"

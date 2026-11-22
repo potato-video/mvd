@@ -1,0 +1,92 @@
+{{define "base"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<link rel="icon" href="/static/favicon.svg?v={{ver}}" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{ver}}">
+<meta name="theme-color" content="#2b2d2f">
+<link rel="preload" href="/static/bricolage.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/style.css?v={{ver}}">
+<script src="/static/htmx.min.js?v={{ver}}" defer></script>
+<script>
+// The logo says which build the server runs; a click copies it. Not the
+// Clipboard API alone: it needs https, and the router is plain http.
+function mvdCopyVersion(el) {
+  const text = el.dataset.version, done = () => {
+    el.classList.add("copied");
+    setTimeout(() => el.classList.remove("copied"), 1400);
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(done);
+    return;
+  }
+  const t = document.createElement("textarea");
+  t.value = text;
+  t.style.position = "fixed";
+  t.style.opacity = "0";
+  document.body.appendChild(t);
+  t.select();
+  try { document.execCommand("copy"); done(); } finally { t.remove(); }
+}
+// Pointing at the logo also fetches the server's memory, CPU and uptime into
+// the tooltip, at most every 10 seconds. The copy is still just the build.
+let mvdStatusAt = 0;
+function mvdStatus(el) {
+  if (Date.now() - mvdStatusAt < 10000) return;
+  mvdStatusAt = Date.now();
+  fetch("/api/status").then(r => r.ok ? r.json() : null).then(s => {
+    if (!s) return;
+    const mem = s.memory.rss || s.memory.go, up = Math.floor(s.uptime / 60);
+    const upStr = up < 1 ? "under a minute" : up < 60 ? up + "m" : up < 1440 ? Math.floor(up / 60) + "h " + up % 60 + "m"
+      : Math.floor(up / 1440) + "d " + Math.floor(up % 1440 / 60) + "h";
+    const cpu = s.cpu && s.cpu.percent != null ? " · " + s.cpu.percent.toFixed(1) + "% CPU" : "";
+    el.title = el.dataset.version + " · " + (mem / 1048576).toFixed(1) + " MB" + cpu + " · up " + upStr + " · click to copy";
+  }).catch(() => {});
+}
+</script>
+</head>
+<body{{if not .Bare}} hx-boost="true"{{end}}{{if .BodyClass}} class="{{.BodyClass}}"{{end}}>
+{{- if not .Bare}}
+<header class="top">
+  <div class="wrap top-in">
+    <button class="mark" type="button" data-version="mvd {{mvdver}}" title="mvd {{mvdver}} · click to copy"
+      onclick="mvdCopyVersion(this)" onmouseenter="mvdStatus(this)" onfocus="mvdStatus(this)"><img src="/static/mvd-logo.svg?v={{ver}}" alt="mvd" width="60" height="28"></button>
+    <nav>
+      <a href="/"{{if eq .Nav "home"}} aria-current="page"{{end}}>Up Next</a>
+      <a href="/movies"{{if eq .Nav "movies"}} aria-current="page"{{end}}>Movies</a>
+      <a href="/tv"{{if eq .Nav "tv"}} aria-current="page"{{end}}>TV</a>
+      {{if .Incoming}}<a href="/incoming"{{if eq .Nav "incoming"}} aria-current="page"{{end}}>Incoming
+        {{- template "navneeds" .Needs}}</a>{{end}}
+    </nav>
+    <a class="nav-search" href="/search" aria-label="Search" title="Search"{{if eq .Nav "search"}} aria-current="page"{{end}}>
+      <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.75" fill="none" stroke="currentColor" stroke-width="2"/><path d="M13 13l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </a>
+  </div>
+</header>
+{{- end}}
+<main>
+{{template "content" .}}
+</main>
+{{- if not .Bare}}
+{{/* TMDB's terms ask whatever shows its data to say so, with its logo:
+   everything the website shows (titles, plots, posters, matches) is TMDB's. */}}
+<footer class="credit">
+  <div class="wrap credit-in">
+    <a href="https://www.themoviedb.org/" target="_blank" rel="noopener"><img src="/static/tmdb.svg?v={{ver}}" alt="TMDB" width="133" height="10"></a>
+    <p>{{tmdbnotice}}</p>
+    {{if .SignedIn}}<form class="signed-in" method="post" action="/logout" hx-boost="false">
+      Signed in as {{.SignedIn}}{{if .Pair}} · <a href="/pair">Pair</a>{{end}} · <button type="submit">Sign out</button>
+    </form>{{end}}
+  </div>
+</footer>
+{{- end}}
+</body>
+</html>
+{{end}}
+
+{{/* How many things need you, beside Incoming in the nav. A poll of the
+   Incoming page sends its own, swapped in out of band. */}}
+{{define "navneeds"}}<span class="nav-count" id="nav-needs"{{if not .}} hidden{{end}} title="Needs you">{{.}}</span>{{end}}
