@@ -28,11 +28,13 @@ be. The README explains the use case.
 
 **The planning docs are private, in
 [mvd-assets](https://github.com/potato-video/mvd-assets)** (checked out
-beside this one, at `../mvd-assets`), because this repo is public:
+beside this one, at `../mvd-assets`), because this repo is public. They're
+every repo's, the Apple apps' included: nothing that's planning goes in
+this repo, only the code and the docs about it as it is.
 
 | Doc | What it's for |
 |---|---|
-| [ROADMAP.md](../mvd-assets/docs/ROADMAP.md) | what's planned, one tagged item each (`[Server]`, `[Web]`, `[Server/AppleTV]`, ...) |
+| [ROADMAP.md](../mvd-assets/docs/ROADMAP.md) | what's planned, one tagged item each (`[Server]`, `[Web]`, `[Server/AppleTV]`, `[AppleTV]`, ...) |
 | [DECISION_LOG.md](../mvd-assets/docs/DECISION_LOG.md) | the bigger decisions and why: read it before reopening one |
 | [TERMINAL_DEVELOPMENT.md](../mvd-assets/docs/TERMINAL_DEVELOPMENT.md) | the planned terminal client (a placeholder) |
 | [VISUAL_DESIGN.md](../mvd-assets/docs/VISUAL_DESIGN.md) | the web UI's look: palette, type, layout |
@@ -127,8 +129,9 @@ CLAUDE.md of their own. What the server does for them stays here: the API
 `scripts/test-server.sh` (a throwaway server with a long Up Next, website
 included, on `:6838` with token `test`, which their UI tests run against),
 and mvd-assets' roadmap and decision log entries that span both
-(`[Server/AppleTV]`, signed requests, pairing). No downloads or torrent
-features in the apps.
+(`[Server/AppleTV]`, signed requests, pairing). The apps' own roadmap and
+decisions are in mvd-assets too. No downloads or torrent features in the
+apps.
 
 ## Where things are
 
