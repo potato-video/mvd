@@ -272,8 +272,7 @@ too.
 
 The magnifying glass at the left of the tab bar. Type with the remote or
 the keyboard on your phone, or hold the microphone button to dictate; the
-results follow as you type, under **Movies**, **TV** and **Episodes**. The
-scope bar under the field narrows them to one of those, or **All**.
+results follow as you type, under **Movies**, **TV** and **Episodes**.
 It finds what [the website's search](#search) does, the same way: a few
 letters of each word, in any order, from titles, collections, directors and
 years.
@@ -395,8 +394,7 @@ Beginning. Tapping the tab you're on goes back to its first page.
 The magnifying glass: at the end of the tab bar, at the top of the iPad's
 sidebar, and on its own beside the other tabs in a narrow window. It finds
 what [the Apple TV's search](#search-1) does, as you type, under **Movies**,
-**TV** and **Episodes**; the scope bar narrows them to one of those, or
-**All**. Tapping an episode opens its show's page there: on its season,
+**TV** and **Episodes**. Tapping an episode opens its show's page there: on its season,
 scrolled to it.
 
 ### The player
