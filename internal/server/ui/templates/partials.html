@@ -49,16 +49,19 @@
   {{- else}}<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6 10.4l2.7 2.6L14 7.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Mark as Watched{{end}}</button>
 {{end}}
 
+{{/* Why it's in Up Next: one pill, or a show's reason with "3 new" beside it. */}}
+{{define "pills"}}<span class="pills">{{range .}}<span class="pill {{.Reason}}">{{.Label}}</span>{{end}}</span>{{end}}
+
 {{/* The hero, as the Apple TV app's HeroView: what's over the backdrop on Up Next's
    feature and the movie and show pages. The poster (not on Up Next), then
-   Up Next's pill, the title with its certificate after it, an episode's
+   Up Next's pills, the title with its certificate after it, an episode's
    line, the facts, the plot, and last how far in, the buttons and the
    .m3u's address, so on Up Next the buttons stay put from entry to entry. */}}
 {{define "hero"}}
 <div class="hero-in{{if .WithPoster}} with-poster{{end}}">
   {{if .WithPoster}}<div class="poster">{{with .Poster}}<img src="{{.}}" alt="">{{end}}</div>{{end}}
   <div class="hero-text">
-    {{with .Label}}<span class="pill {{$.Reason}}">{{.}}</span>{{end}}
+    {{with .Pills}}{{template "pills" .}}{{end}}
     {{/* The word joiner keeps the certificate on the line with the last word. */}}
     <h1>{{if .Href}}<a href="{{.Href}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}{{with .Rating}}&#8288;<span class="cert">{{.}}</span>{{end}}</h1>
     {{with .Line}}<div class="line">{{.}}</div>{{end}}

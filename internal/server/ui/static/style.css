@@ -403,6 +403,8 @@ h1, h2, .title {
 }
 .pill.continue { background: var(--mvd-gold); color: var(--amber-ink); }
 .pill.new { background: var(--mvd-red); }
+/* Up Next's: a show's reason with "3 new" beside it. */
+.pills { display: flex; flex-wrap: wrap; gap: 6px; }
 
 /* Over the backdrop's faded edge. The rows fade out at the top and the
    foot as they scroll into them. */

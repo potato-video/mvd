@@ -30,7 +30,7 @@
       </div>
       <div class="text">
         <h3><a href="/watch/{{.ID}}" hx-boost="false">{{if .Title}}{{.Title}}{{else}}Episode {{.Episode}}{{end}}</a></h3>
-        <div class="meta">{{epcode .Season .Episode .LastEpisode}}{{if .Aired}} · {{date .Aired}}{{end}}{{if .Runtime}} · {{runtime .Runtime}}{{end}}{{if .Position}} · {{clock .Position}} in{{end}}</div>
+        <div class="meta">{{epcode .Season .Episode .LastEpisode}}{{if .Aired}} · {{date .Aired}}{{end}}{{with timeleft .Position .Duration .Runtime}} · {{.}}{{end}}</div>
         {{if .Plot}}<p class="desc">{{.Plot}}</p>{{end}}
         {{with index $.Data.Links .ID}}<a class="playurl" href="{{.}}" hx-boost="false">{{.}}</a>{{end}}
       </div>

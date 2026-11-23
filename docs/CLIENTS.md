@@ -40,6 +40,9 @@ One list of what to watch, at most one entry per movie or show:
 - **New:** movies added in the last 30 days that you haven't watched, and shows
   with new episodes (the one to watch next, with how many are waiting).
 
+A show you're watching that has new episodes waiting gets a red "3 new"
+beside its Continue watching or Next episode label.
+
 The newest is first, by when you last played it or when it arrived.
 Part-watched things get a head start.
 
@@ -72,7 +75,9 @@ next.
 
 A show's page has the same at the top, with "Play S01E04" (or "Resume
 S01E04") for the next episode. Below are its seasons as tabs, over an
-episode list where each episode has its own Play and watched buttons.
+episode list where each episode has its own Play and watched buttons, and
+its code, air date and length ("S01E04 · 12 Oct 1985 · 48m"), or once
+started how much is left ("27m left").
 
 ### Search
 

@@ -1261,11 +1261,16 @@ step and no framework.
 - **It matches the Apple TV app,** while staying a website: the `.m3u` link
   under Play, hover to clear progress, each episode's own Play and watched
   buttons. The same wording ("Play" / "Resume", "Play S01E04", "Mark as
-  Watched") and the same button looks (gold Play; cornflower Watched and
-  Remove from Up Next).
+  Watched", an episode's "S01E02 · 3 Mar 2022 · 36m left", Up Next's
+  "Continue watching" with "3 new" beside it) and the same button looks
+  (gold Play; cornflower Watched and Remove from Up Next).
+- **Lengths are worked out as in MVDKit** (`timeLeft`, `secondsLeft`): the
+  NFO's runtime, else the length played before; once started, what's left
+  is that length less the share watched, so it agrees with the length
+  shown. A line says one or the other, never both.
 - **One hero:** the `hero` and `playactions` partials (`partials.html`) are
   the Apple app's `HeroView` and `PlayActions`: poster (not on Up Next),
-  label, title with the age rating after it (a word joiner keeps it on the
+  Up Next's pills, title with the age rating after it (a word joiner keeps it on the
   last line), an episode's line, facts with the genres last, the plot, then
   the progress line over the buttons, and the link under them. `heroData`
   and `playData` (`webui.go`) carry them.

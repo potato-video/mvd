@@ -83,7 +83,7 @@ type toggleData struct {
 type heroData struct {
 	Poster        string
 	WithPoster    bool   // a poster column, with a stand-in if there's no Poster
-	Reason, Label string // Up Next's pill
+	Pills         []pill // Up Next's
 	Title, Href   string // Href: the title opens its page (Up Next)
 	Rating        string
 	Line          string // an episode's code and name, under the show's title
@@ -107,7 +107,7 @@ type playData struct {
 
 // playFor is the play block for a movie or episode; code is an episode's
 // "S01E04", for a show's page.
-func (sv *Server) playFor(r *http.Request, id, title string, pos, dur float64, code, target, oob string) *playData {
+func (sv *Server) playFor(r *http.Request, id, title string, pos, dur float64, runtime int, code, target, oob string) *playData {
 	label := "Play"
 	if pos > 0 {
 		label = "Resume"
@@ -116,7 +116,7 @@ func (sv *Server) playFor(r *http.Request, id, title string, pos, dur float64, c
 		label += " " + code
 	}
 	return &playData{ID: id, Title: title, Href: "/watch/" + id, Label: label, Pct: pct(pos, dur),
-		Left: max(dur-pos, 0), PlayURL: sv.playLink(r, id), Target: target, OOB: oob}
+		Left: secondsLeft(pos, dur, runtime), PlayURL: sv.playLink(r, id), Target: target, OOB: oob}
 }
 
 var langNames = map[string]string{
@@ -144,8 +144,7 @@ var uiFuncs = template.FuncMap{
 	"join":       strings.Join,
 	"inc":        func(i int) int { return i + 1 },
 	"pct":        pct,
-	"runtime":    func(min int) string { return short(float64(min) * 60) },
-	"clock":      clock,
+	"timeleft":   timeLeft,
 	"date": func(d string) string {
 		t, err := time.Parse("2006-01-02", d)
 		if err != nil {
@@ -189,14 +188,6 @@ func pct(pos, dur float64) int {
 		return 0
 	}
 	return max(1, min(100, int(pos/dur*100)))
-}
-
-func clock(sec float64) string {
-	s := int(sec)
-	if s >= 3600 {
-		return fmt.Sprintf("%d:%02d:%02d", s/3600, s/60%60, s%60)
-	}
-	return fmt.Sprintf("%d:%02d", s/60, s%60)
 }
 
 func epcode(season, ep, last int) string {
@@ -353,42 +344,85 @@ func yearStr(y int) string {
 // homeItem is one Up Next entry on the home page: a row in the list, and
 // the feature beside it (Hero) when it's selected.
 type homeItem struct {
-	Key, ID, Reason, Label string
-	Title                  string // the movie or show
-	Sub                    string // the row's second line
-	Thumb, Backdrop        string
-	PlayHref               string
-	Pct                    int
-	Pos, Dur               float64
-	Hero                   heroData
+	Key, ID         string
+	Pills           []pill
+	Title           string // the movie or show
+	Sub             string // the row's second line
+	Thumb, Backdrop string
+	PlayHref        string
+	Pct             int
+	Pos, Dur        float64
+	Hero            heroData
 }
+
+// pill is one of Up Next's: its reason gives it its color.
+type pill struct{ Reason, Label string }
 
 var upNextLabels = map[string]string{"continue": "Continue watching", "next": "Next episode", "new": "New"}
 
-// timeLeft: "13m left" part-way through, else how long it is ("45m").
+// upNextPills, as the Apple apps': the reason's, then for a show you're
+// watching, a red one too if new episodes wait. A show's new pill says
+// how many ("3 new").
+func upNextPills(it upNextItem) []pill {
+	np := pill{"new", upNextLabels["new"]}
+	if _, ok := it.View.(episodeView); ok {
+		np.Label = fmt.Sprintf("%d new", it.NewCount)
+	}
+	switch {
+	case it.Reason == "new":
+		return []pill{np}
+	case it.NewCount > 0:
+		return []pill{{it.Reason, upNextLabels[it.Reason]}, np}
+	}
+	return []pill{{it.Reason, upNextLabels[it.Reason]}}
+}
+
+// length is how long a movie or episode is: the NFO's runtime (minutes),
+// else the length played before; 0 if neither is known. As the Apple apps
+// have it.
+func length(dur float64, runtime int) float64 {
+	if runtime > 0 {
+		return float64(runtime) * 60
+	}
+	return max(dur, 0)
+}
+
+// secondsLeft is what's left of its length, by the share already watched,
+// so it agrees with the length shown.
+func secondsLeft(pos, dur float64, runtime int) float64 {
+	switch {
+	case pos <= 0:
+		return length(dur, runtime)
+	case dur <= pos:
+		return 0
+	}
+	return length(dur, runtime) * (1 - pos/dur)
+}
+
+// timeLeft: "13m left" part-way through, else how long it is ("45m"):
+// never both.
 func timeLeft(pos, dur float64, runtime int) string {
 	switch {
+	case length(dur, runtime) <= 0:
+		return ""
 	case pos > 0 && dur > pos:
-		return short(dur-pos) + " left"
-	case dur > 0:
-		return short(dur)
-	case runtime > 0:
-		return short(float64(runtime) * 60)
+		return short(secondsLeft(pos, dur, runtime)) + " left"
 	}
-	return ""
+	return short(length(dur, runtime))
 }
 
 func (sv *Server) homeItems(r *http.Request, s shelf, up []upNextItem) []homeItem {
 	out := make([]homeItem, 0, len(up))
 	for _, it := range up {
-		h := homeItem{Reason: it.Reason, Label: upNextLabels[it.Reason]}
-		hero := heroData{Reason: h.Reason, Label: h.Label}
+		h := homeItem{Pills: upNextPills(it)}
+		hero := heroData{Pills: h.Pills}
+		var rt int // the runtime, for what's left
 		art := upNextPictures(it.View)
 		h.Backdrop, h.Thumb = art.Backdrop, art.RowThumb
 		switch v := it.View.(type) {
 		case movieView:
 			h.ID, h.Title = v.ID, v.Title
-			h.Pos, h.Dur = v.Position, v.Duration
+			h.Pos, h.Dur, rt = v.Position, v.Duration, v.Runtime
 			left := timeLeft(v.Position, v.Duration, v.Runtime)
 			h.Sub = strings.Join(nonEmpty(yearStr(v.Year), left), " · ")
 			hero.Href, hero.Plot, hero.Rating, hero.Genres = "/movies/"+v.ID, v.Plot, v.Rating, v.Genres
@@ -401,7 +435,7 @@ func (sv *Server) homeItems(r *http.Request, s shelf, up []upNextItem) []homeIte
 			code := epcode(v.Season, v.Episode, v.LastEpisode)
 			left := timeLeft(v.Position, v.Duration, v.Runtime)
 			h.ID, h.Title = v.ID, v.ShowTitle
-			h.Pos, h.Dur = v.Position, v.Duration
+			h.Pos, h.Dur, rt = v.Position, v.Duration, v.Runtime
 			h.Sub = strings.Join(nonEmpty(code, title, left), " · ")
 			hero.Href = fmt.Sprintf("/tv/%s?season=%d", v.ShowID, v.Season)
 			// The episode's own synopsis: the show's would be the same for every episode.
@@ -419,7 +453,7 @@ func (sv *Server) homeItems(r *http.Request, s shelf, up []upNextItem) []homeIte
 		h.PlayHref = "/watch/" + h.ID
 		h.Pct = pct(h.Pos, h.Dur)
 		hero.Title = h.Title
-		hero.Play = sv.playFor(r, h.ID, h.Title, h.Pos, h.Dur, "", "home", "")
+		hero.Play = sv.playFor(r, h.ID, h.Title, h.Pos, h.Dur, rt, "", "home", "")
 		hero.Play.Remove = true
 		h.Hero = hero
 		out = append(out, h)
@@ -497,7 +531,7 @@ func (sv *Server) uiMovie(w http.ResponseWriter, r *http.Request) {
 	}
 	v := s.movieView(m, true)
 	// One Play for all its parts: the player goes on from one to the next.
-	play := sv.playFor(r, v.ID, v.Title, v.Position, v.Duration, "", "hero", "")
+	play := sv.playFor(r, v.ID, v.Title, v.Position, v.Duration, v.Runtime, "", "hero", "")
 	play.Toggle = &toggleData{ID: v.ID, Watched: v.Watched, Target: "hero"}
 	sv.render(w, r, "movie", page{Title: m.Title, Nav: "movies", Data: map[string]any{
 		"Fanart": v.Fanart,
@@ -561,7 +595,7 @@ func (sv *Server) uiShow(w http.ResponseWriter, r *http.Request) {
 	if next != nil {
 		// Its row redraws with the hero, if it's in the season shown.
 		code := epcode(next.Season, next.Episode, next.LastEpisode)
-		hero.Play = sv.playFor(r, next.ID, code+" "+next.Title, next.Position, next.Duration, code, "hero", "c-ep-"+next.ID)
+		hero.Play = sv.playFor(r, next.ID, code+" "+next.Title, next.Position, next.Duration, next.Runtime, code, "hero", "c-ep-"+next.ID)
 	}
 	sv.render(w, r, "show", page{Title: sh.Title, Nav: "tv", Data: map[string]any{
 		"S": v, "Season": season, "Links": links, "Hero": hero,

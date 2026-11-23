@@ -153,6 +153,49 @@ func TestShort(t *testing.T) {
 	}
 }
 
+// timeLeft, as the Apple apps work it out: the runtime is the length, else
+// the length played; part-way, what's left is that length less the share
+// watched.
+func TestTimeLeft(t *testing.T) {
+	for _, c := range []struct {
+		pos, dur float64
+		runtime  int
+		want     string
+	}{
+		{0, 0, 0, ""},
+		{0, 2820, 0, "47m"},
+		{0, 2820, 48, "48m"},
+		{1410, 2820, 48, "24m left"},
+		{1410, 2820, 0, "23m left"},
+		{2820, 2820, 48, "48m"},
+	} {
+		if got := timeLeft(c.pos, c.dur, c.runtime); got != c.want {
+			t.Errorf("timeLeft(%v, %v, %d) = %q, want %q", c.pos, c.dur, c.runtime, got, c.want)
+		}
+	}
+}
+
+// Up Next's pills, as the Apple apps': a show's new entry says how many
+// ("2 new"); a show you're watching with new episodes waiting gets a red
+// pill beside its reason, in the row and the feature.
+func TestUIHomePills(t *testing.T) {
+	ts := newTestServer(t, "")
+	defer ts.hs.Close()
+	h := body(t, ts.do("GET", "/", "", nil))
+	if !strings.Contains(h, `<span class="pill new">2 new</span>`) || !strings.Contains(h, `<span class="pill new">New</span>`) {
+		t.Errorf("fresh library:\n%s", h)
+	}
+
+	var sh showView
+	ts.json("GET", "/api/shows/s95396", "", &sh)
+	ts.do("POST", "/api/progress/"+sh.Seasons[0].Episodes[0].ID, `{"watched": true}`, nil).Body.Close()
+	h = body(t, ts.do("GET", "/", "", nil))
+	pair := `<span class="pills"><span class="pill next">Next episode</span><span class="pill new">1 new</span></span>`
+	if strings.Count(h, pair) != 2 {
+		t.Errorf("next episode with one new: want the two pills in the row and the feature:\n%s", h)
+	}
+}
+
 // The home page: Up Next as a list, the first entry featured beside it;
 // every entry labelled with why it's there; "All caught up" when empty.
 func TestUIHome(t *testing.T) {
@@ -179,7 +222,7 @@ func TestUIHome(t *testing.T) {
 	ts.do("POST", "/api/progress/m238", `{"position": 600, "duration": 10500}`, nil).Body.Close()
 	h = page()
 	for _, want := range []string{`class="pill continue">Continue watching<`, `class="pill next">Next episode<`,
-		`class="pill new">New<`, `>Resume</a>`, `>Remove from Up Next</button>`, `class="playurl" href="` + ts.hs.URL + `/play/m238.m3u"`, `class="line">S01E02 · Half Loop<`, `<div class="qsub">1972 · 2h 45m left</div>`, `class="progress"`} {
+		`class="pill new">New<`, `>Resume</a>`, `>Remove from Up Next</button>`, `class="playurl" href="` + ts.hs.URL + `/play/m238.m3u"`, `class="line">S01E02 · Half Loop<`, `<div class="qsub">1972 · 1h 53m left</div>`, `class="progress"`} {
 		if !strings.Contains(h, want) {
 			t.Errorf("after watching: lacks %s", want)
 		}
@@ -327,8 +370,8 @@ func TestUIMovieAndPlayerLayout(t *testing.T) {
 	ts.do("POST", "/api/progress/m238", `{"position": 600, "duration": 10500}`, nil).Body.Close()
 	h := body(t, ts.do("GET", "/movies/m238", "", nil))
 	if !inOrder(h, `<section class="hero full" id="hero">`, `class="poster"`, `<h1>The Godfather&#8288;<span class="cert">15</span></h1>`,
-		`<div class="facts">1972 · 2h 55m<span class="genres"> · Drama</span></div>`,
-		`class="progress"`, `hx-target="#hero"`, `2h 45m left`, `<a class="btn play" href="/watch/m238" hx-boost="false">Resume</a>`,
+		`<div class="facts">1972 · 2h<span class="genres"> · Drama</span></div>`,
+		`class="progress"`, `hx-target="#hero"`, `1h 53m left`, `<a class="btn play" href="/watch/m238" hx-boost="false">Resume</a>`,
 		`Mark as Watched`, `class="playurl"`) {
 		t.Errorf("movie page:\n%s", h)
 	}
@@ -350,7 +393,7 @@ func TestUIHomeMovieSubtitle(t *testing.T) {
 	h := body(t, ts.do("GET", "/", "", nil))
 	row := h[strings.Index(h, `id="c-up-m238"`):]
 	row = row[:strings.Index(row, `</li>`)]
-	if strings.Contains(h, "10:00 in") || !strings.Contains(row, `<div class="qsub">1972 · 2h 45m left</div>`) {
+	if strings.Contains(h, "10:00 in") || !strings.Contains(row, `<div class="qsub">1972 · 1h 53m left</div>`) {
 		t.Errorf("Up Next movie row:\n%s", row)
 	}
 }
@@ -379,7 +422,7 @@ func TestUIShowPage(t *testing.T) {
 	ts.do("POST", "/api/progress/"+e1, `{"position": 300, "duration": 3000}`, nil).Body.Close()
 	h = body(t, ts.do("GET", "/tv/s95396", "", nil))
 	if !inOrder(h, `hx-select-oob="#c-ep-`+e1+`"`, `45m left`, `>Resume S01E01</a>`) ||
-		!strings.Contains(h, `S01E01 · `) || !strings.Contains(h, ` · 5:00 in</div>`) {
+		!strings.Contains(h, `S01E01 · `) || !strings.Contains(h, ` · 45m left</div>`) || strings.Contains(h, ` in</div>`) {
 		t.Errorf("show page part-way:\n%s", h)
 	}
 
@@ -414,7 +457,7 @@ func TestUIGrids(t *testing.T) {
 	}
 	ts.do("POST", "/api/progress/m238", `{"position": 600, "duration": 10500}`, nil).Body.Close()
 	h = body(t, ts.do("GET", "/movies", "", nil))
-	if c := card(h, "m238"); strings.Contains(c, "pill") || !strings.Contains(c, `<div class="sub">1972 · 2h 45m left</div>`) {
+	if c := card(h, "m238"); strings.Contains(c, "pill") || !strings.Contains(c, `<div class="sub">1972 · 1h 53m left</div>`) {
 		t.Errorf("part-way movie:\n%s", c)
 	}
 	ts.do("POST", "/api/progress/m238", `{"watched": true}`, nil).Body.Close()
