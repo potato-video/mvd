@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"mvd/internal/lang"
 	"mvd/internal/tmdb"
 )
 
@@ -12,6 +13,7 @@ type nfoShow struct {
 	XMLName       xml.Name         `xml:"tvshow"`
 	Title         string           `xml:"title"`
 	OriginalTitle string           `xml:"originaltitle,omitempty"`
+	OriginalLang  string           `xml:"originallanguage,omitempty"` // Kodi v22's
 	Year          int              `xml:"year,omitempty"`
 	Premiered     string           `xml:"premiered,omitempty"`
 	Plot          string           `xml:"plot,omitempty"`
@@ -84,6 +86,7 @@ func buildShowNFO(s *tmdb.TVShow, region string, t *tmdb.Client) []byte {
 		UniqueIDs: []nfoUniqueID{{Type: "tmdb", Default: true, Value: strconv.Itoa(s.ID)}},
 		Actors:    actors(s.Credits.Cast, 20, t),
 	}
+	n.OriginalLang = lang.Code(s.OriginalLanguage)
 	if s.OriginalName != s.Name {
 		n.OriginalTitle = s.OriginalName
 	}

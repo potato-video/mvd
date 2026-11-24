@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"mvd/internal/lang"
 	"mvd/internal/library"
 	"mvd/internal/tmdb"
 )
@@ -413,6 +414,7 @@ func timeLeft(pos, dur float64, runtime int) string {
 
 func (sv *Server) homeItems(r *http.Request, s shelf, up []upNextItem) []homeItem {
 	out := make([]homeItem, 0, len(up))
+	viewer := viewerLang(r)
 	for _, it := range up {
 		h := homeItem{Pills: upNextPills(it)}
 		hero := heroData{Pills: h.Pills}
@@ -426,7 +428,7 @@ func (sv *Server) homeItems(r *http.Request, s shelf, up []upNextItem) []homeIte
 			left := timeLeft(v.Position, v.Duration, v.Runtime)
 			h.Sub = strings.Join(nonEmpty(yearStr(v.Year), left), " · ")
 			hero.Href, hero.Plot, hero.Rating, hero.Genres = "/movies/"+v.ID, v.Plot, v.Rating, v.Genres
-			hero.Facts = movieFacts(v)
+			hero.Facts = movieFacts(v, viewer)
 		case episodeView:
 			title := v.Title
 			if title == "" {
@@ -444,7 +446,8 @@ func (sv *Server) homeItems(r *http.Request, s shelf, up []upNextItem) []homeIte
 				hero.Rating, hero.Genres = sh.Rating, sh.Genres
 			}
 			hero.Line = code + " · " + title
-			hero.Facts = nonEmpty(timeLeft(0, v.Duration, v.Runtime)) // how long; the progress line says what's left
+			// How long; the progress line says what's left.
+			hero.Facts = nonEmpty(langFact(v.OriginalLanguage, viewer), timeLeft(0, v.Duration, v.Runtime))
 			if it.NewCount > 1 {
 				hero.Facts = append(hero.Facts, fmt.Sprintf("%d new episodes", it.NewCount))
 			}
@@ -536,14 +539,34 @@ func (sv *Server) uiMovie(w http.ResponseWriter, r *http.Request) {
 	sv.render(w, r, "movie", page{Title: m.Title, Nav: "movies", Data: map[string]any{
 		"Fanart": v.Fanart,
 		"Hero": heroData{Poster: v.Poster, WithPoster: true, Title: v.Title, Rating: v.Rating,
-			Facts: movieFacts(v), Genres: v.Genres, Plot: v.Plot, Play: play},
+			Facts: movieFacts(v, viewerLang(r)), Genres: v.Genres, Plot: v.Plot, Play: play},
 	}})
 }
 
-// movieFacts: the year and the length (not what's left: the progress line
-// says that).
-func movieFacts(v movieView) []string {
-	return nonEmpty(yearStr(v.Year), timeLeft(0, v.Duration, v.Runtime))
+// movieFacts: the language if it isn't the viewer's, the year and the
+// length (not what's left: the progress line says that).
+func movieFacts(v movieView, viewer string) []string {
+	return nonEmpty(langFact(v.OriginalLanguage, viewer), yearStr(v.Year), timeLeft(0, v.Duration, v.Runtime))
+}
+
+// viewerLang is the language the viewer reads: the first in the request's
+// Accept-Language, without its region ("en-GB" is "en"); English without one.
+func viewerLang(r *http.Request) string {
+	first, _, _ := strings.Cut(r.Header.Get("Accept-Language"), ",")
+	first, _, _ = strings.Cut(first, ";")
+	if c := lang.Code(first); c != "" {
+		return c
+	}
+	return "en"
+}
+
+// langFact names the language a title was made in ("Danish", "Silent"),
+// "" if it's the viewer's or one without a name.
+func langFact(code, viewer string) string {
+	if code == viewer {
+		return ""
+	}
+	return lang.Name(code)
 }
 
 func (sv *Server) uiShow(w http.ResponseWriter, r *http.Request) {
@@ -582,7 +605,7 @@ func (sv *Server) uiShow(w http.ResponseWriter, r *http.Request) {
 	for _, e := range season.Episodes {
 		links[e.ID] = sv.playLink(r, e.ID)
 	}
-	facts := nonEmpty(yearStr(v.Year))
+	facts := nonEmpty(langFact(v.OriginalLanguage, viewerLang(r)), yearStr(v.Year))
 	switch {
 	case regular == 1:
 		facts = append(facts, "1 season")

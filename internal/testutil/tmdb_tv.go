@@ -119,7 +119,7 @@ func TMDBTV(t *testing.T) *httptest.Server {
 			seasons = append(seasons, map[string]any{"season_number": n, "name": name,
 				"poster_path": fmt.Sprintf("/s%d.jpg", n), "episode_count": len(names)})
 		}
-		json.NewEncoder(w).Encode(map[string]any{"id": s.ID, "name": s.Name, "original_name": s.Name,
+		json.NewEncoder(w).Encode(map[string]any{"id": s.ID, "name": s.Name, "original_name": s.Name, "original_language": "en",
 			"first_air_date": s.Date, "overview": "About " + s.Name, "poster_path": "/p.jpg",
 			"backdrop_path": "/b.jpg", "seasons": seasons, "origin_country": []string{s.Country},
 			"external_ids":    map[string]any{"imdb_id": "tt0000001", "tvdb_id": 7000 + s.ID},

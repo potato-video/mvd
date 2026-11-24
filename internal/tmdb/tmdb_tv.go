@@ -10,6 +10,7 @@ type TVShow struct {
 	ID                  int      `json:"id"`
 	Name                string   `json:"name"`
 	OriginalName        string   `json:"original_name"`
+	OriginalLanguage    string   `json:"original_language"`
 	Overview            string   `json:"overview"`
 	Tagline             string   `json:"tagline"`
 	FirstAirDate        string   `json:"first_air_date"`

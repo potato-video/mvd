@@ -183,7 +183,8 @@ func TestRefreshTVAllRewritesShow(t *testing.T) {
 		t.Errorf("tvshow.nfo not refreshed:\n%s", b)
 	}
 	ix := BuildIndex("", root, nil)
-	if len(ix.Shows) != 1 || strings.Join(ix.Shows[0].Genres, ",") != "Drama,Mystery" || ix.Shows[0].Status != "Returning Series" {
+	if len(ix.Shows) != 1 || strings.Join(ix.Shows[0].Genres, ",") != "Drama,Mystery" || ix.Shows[0].Status != "Returning Series" ||
+		ix.Shows[0].OriginalLanguage != "en" {
 		t.Errorf("index: %+v", ix.Shows)
 	}
 }

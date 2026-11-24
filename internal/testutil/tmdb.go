@@ -75,7 +75,7 @@ func TMDB(t *testing.T) *httptest.Server {
 			if m.ID != id {
 				continue
 			}
-			out := map[string]any{"id": m.ID, "title": m.Title, "original_title": m.Title, "release_date": m.Date,
+			out := map[string]any{"id": m.ID, "title": m.Title, "original_title": m.Title, "original_language": "en", "release_date": m.Date,
 				"overview": "About " + m.Title, "runtime": 120, "imdb_id": "tt" + strconv.Itoa(1000000+m.ID),
 				"poster_path": "/p" + strconv.Itoa(m.ID) + ".jpg", "backdrop_path": "/b" + strconv.Itoa(m.ID) + ".jpg",
 				"genres": []map[string]any{{"name": "Drama"}}, "vote_average": 7.9, "vote_count": 100,

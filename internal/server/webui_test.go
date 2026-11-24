@@ -384,6 +384,37 @@ func TestUIMovieAndPlayerLayout(t *testing.T) {
 	}
 }
 
+// The facts start with the language a title was made in when it isn't the
+// viewer's (the first of their Accept-Language, English without one):
+// languages, not regions, so en-GB doesn't see "English" on an en film.
+func TestUIOriginalLanguage(t *testing.T) {
+	ts := newTestServer(t, "")
+	defer ts.hs.Close()
+	var m movieView
+	ts.json("GET", "/api/movies/m238", "", &m)
+	var sh showView
+	ts.json("GET", "/api/shows/s95396", "", &sh)
+	if m.OriginalLanguage != "en" || sh.OriginalLanguage != "en" || sh.Seasons[0].Episodes[0].OriginalLanguage != "en" {
+		t.Errorf("API: movie %q, show %q", m.OriginalLanguage, sh.OriginalLanguage)
+	}
+	ts.do("POST", "/api/progress/m238", `{"position": 600, "duration": 10500}`, nil).Body.Close()
+	for _, c := range []struct{ accept, movie, show, home string }{
+		{"", `<div class="facts">1972 · 2h<`, `<div class="facts">2022 · 1 season`, `<div class="facts">1972 · 2h<`},
+		{"en-GB,da;q=0.8", `<div class="facts">1972 · 2h<`, `<div class="facts">2022 · 1 season`, `<div class="facts">1972 · 2h<`},
+		{"da-DK, en;q=0.5", `<div class="facts">English · 1972 · 2h<`, `<div class="facts">English · 2022 · 1 season`, `<div class="facts">English · 1972 · 2h<`},
+	} {
+		hdr := map[string]string{}
+		if c.accept != "" {
+			hdr["Accept-Language"] = c.accept
+		}
+		for page, want := range map[string]string{"/movies/m238": c.movie, "/tv/s95396": c.show, "/": c.home} {
+			if h := body(t, ts.do("GET", page, "", hdr)); !strings.Contains(h, want) {
+				t.Errorf("%s with Accept-Language %q: no %s", page, c.accept, want)
+			}
+		}
+	}
+}
+
 // A movie in Up Next is subtitled with its year and how long's left; an
 // episode not started, with how long it is.
 func TestUIHomeMovieSubtitle(t *testing.T) {

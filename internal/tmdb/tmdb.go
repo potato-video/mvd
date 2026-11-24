@@ -75,6 +75,7 @@ type Movie struct {
 	IMDBID              string  `json:"imdb_id"`
 	Title               string  `json:"title"`
 	OriginalTitle       string  `json:"original_title"`
+	OriginalLanguage    string  `json:"original_language"`
 	Overview            string  `json:"overview"`
 	Tagline             string  `json:"tagline"`
 	ReleaseDate         string  `json:"release_date"`

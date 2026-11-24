@@ -73,6 +73,11 @@ then Play (or Resume) and Mark as Watched, and the `.m3u` link. A movie in
 several parts has one Play button: the player goes from one part to the
 next.
 
+The facts start with the language a movie or show was made in when it isn't
+yours (the first language your browser asks for): "Danish · 2020 · 1
+season", or "Silent" for a silent film. It goes by language, not region, so
+an American show isn't marked "English" for a British viewer.
+
 A show's page has the same at the top, with "Play S01E04" (or "Resume
 S01E04") for the next episode. Below are its seasons as tabs, over an
 episode list where each episode has its own Play and watched buttons, and
@@ -269,6 +274,9 @@ drawer. Each tab remembers its order. Clicking a poster opens its page:
 - **A show's page:** "Play S02E03" (or "Resume S02E03") for the next
   episode, then the seasons as tabs over the episode list. Long-press an
   episode to mark it watched or unwatched.
+
+As on the website, the facts start with the language it was made in when
+that isn't the first language set on the device ("Danish", "Silent").
 
 Menu goes back from a movie's or show's page to the grid, from the tab bar
 too.

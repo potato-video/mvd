@@ -1446,6 +1446,11 @@ components:
             rating: { type: string, description: "certification, e.g. 15" }
             genres: { type: array, items: { type: string } }
             directors: { type: array, items: { type: string } }
+            original_language:
+              type: string
+              description: >-
+                The language it was made in, from TMDB: ISO 639-1 ("da"), else
+                BCP 47 ("yue"), "zxx" for none (a silent film). Absent when unknown.
             streams:
               type: array
               items: { type: string }
@@ -1493,6 +1498,7 @@ components:
               items: { type: string }
               description: The show's, so an episode shown on its own (in Up Next, say) has them
             rating: { type: string, description: "The show's certificate (\"15\", \"TV-MA\")" }
+            original_language: { type: string, description: "The show's original_language" }
             poster: { type: string, description: "/art/{show}/season-{n}, else /art/{show}/poster; omitted if neither" }
             fanart: { type: string, description: "/art/{show}/fanart, the show's" }
 
@@ -1521,6 +1527,11 @@ components:
             rating: { type: string, description: "certification, e.g. 15" }
             status: { type: string, description: "e.g. Ended, Returning Series" }
             genres: { type: array, items: { type: string } }
+            original_language:
+              type: string
+              description: >-
+                The language it was made in, from TMDB: ISO 639-1 ("da"), else
+                BCP 47 ("yue"), "zxx" for none (a silent film). Absent when unknown.
             seasons:
               type: array
               items: { $ref: "#/components/schemas/Season" }

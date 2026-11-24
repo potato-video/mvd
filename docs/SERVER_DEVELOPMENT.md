@@ -34,6 +34,7 @@ change is weighed against that:
 cmd/mvd/            the command line: one file per command (import.go, torrent.go, ...)
 internal/config/    config.toml: one table of settings, by "section.key"
 internal/library/   names, matching, NFOs, import and refresh, unpacking, the library index, search, ffprobe
+internal/lang/      language codes and their English names (ISO 639-1 and 639-2, BCP 47, TMDB's)
 internal/archive/   reading .zip and .rar (stored RAR4 and RAR5, across volumes)
 internal/tmdb/      the TMDB client (movies, TV, episode groups), with its cache
 internal/torrent/   the Transmission client, and the OpenWRT setup script
@@ -228,6 +229,13 @@ is ignored with a warning naming the right section.
 The importer is in `internal/library`: `import.go` (the `Importer`),
 `plan.go` (reading an item), `parse.go` and `parse_tv.go` for names,
 `match.go` for TMDB, `nfo*.go` for writing.
+
+The NFOs carry TMDB's `original_language` as Kodi's `<originallanguage>`
+(Kodi v22), in BCP 47: TMDB's `xx` (no language) is written `zxx`, its `cn`
+(Cantonese) `yue`. Other tools write it as ISO 639-1 or 639-2, BCP 47
+(`fr-CA`) or an English name, so the index reads it through `lang.Code`,
+which turns all of those into one code ("fr"). A library filed before the
+tag was added gets it from `mvd refresh -all`.
 
 - **Three types.** `filer` (`filer.go`) is what import and refresh share:
   moving files into place (`mv`, sidecars), NFOs and artwork (`apply` for a
@@ -1285,7 +1293,9 @@ step and no framework.
 - **One hero:** the `hero` and `playactions` partials (`partials.html`) are
   the Apple app's `HeroView` and `PlayActions`: poster (not on Up Next),
   Up Next's pills, title with the age rating after it (a word joiner keeps it on the
-  last line), an episode's line, facts with the genres last, the plot, then
+  last line), an episode's line, facts with the genres last (and first, the
+  original language when it isn't the viewer's: `viewerLang` takes the first
+  `Accept-Language` tag, English without one; `lang.Name` names it), the plot, then
   the progress line over the buttons, and the link under them. `heroData`
   and `playData` (`webui.go`) carry them.
 - **Up Next** renders every entry's feature up front, all but one hidden.

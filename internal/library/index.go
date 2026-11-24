@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"mvd/internal/lang"
 )
 
 // The library as the server sees it, read from the folders and NFOs that
@@ -37,15 +39,17 @@ type Movie struct {
 	Rating    string
 	Genres    []string
 	Directors []string
-	Set       string
-	Dir       string
-	Files     []string     // several for part1/part2 stacks
-	Media     []*MediaFile `json:",omitempty"` // Files' probes, nil where not probed
-	Bytes     int64        `json:",omitempty"` // Files' size, together
-	Subs      []Sub
-	Added     time.Time
-	Poster    string
-	Fanart    string
+	// OriginalLanguage is the language it was made in, as lang.Code has it.
+	OriginalLanguage string `json:",omitempty"`
+	Set              string
+	Dir              string
+	Files            []string     // several for part1/part2 stacks
+	Media            []*MediaFile `json:",omitempty"` // Files' probes, nil where not probed
+	Bytes            int64        `json:",omitempty"` // Files' size, together
+	Subs             []Sub
+	Added            time.Time
+	Poster           string
+	Fanart           string
 }
 
 type Show struct {
@@ -57,10 +61,12 @@ type Show struct {
 	Rating    string
 	Status    string
 	Genres    []string
-	Dir       string
-	Seasons   []*Season
-	Poster    string
-	Fanart    string
+	// OriginalLanguage is the language it was made in, as lang.Code has it.
+	OriginalLanguage string `json:",omitempty"`
+	Dir              string
+	Seasons          []*Season
+	Poster           string
+	Fanart           string
 }
 
 type Season struct {
@@ -206,6 +212,7 @@ func (ix *Index) indexMovies(root string, known Probed) {
 		if b, err := os.ReadFile(nfo); err == nil && xml.Unmarshal(b, &n) == nil && n.Title != "" {
 			m.Title, m.Year, m.Plot, m.Tagline = n.Title, n.Year, n.Plot, n.Tagline
 			m.Runtime, m.Rating, m.Genres, m.Directors = n.Runtime, n.MPAA, n.Genres, n.Directors
+			m.OriginalLanguage = lang.Code(n.OriginalLang)
 			if n.Set != nil {
 				m.Set = n.Set.Name
 			}
@@ -257,7 +264,7 @@ func (ix *Index) indexShows(root string, known Probed) {
 		var n nfoShow
 		if b, err := os.ReadFile(filepath.Join(dir, "tvshow.nfo")); err == nil && xml.Unmarshal(b, &n) == nil && n.Title != "" {
 			sh.Title, sh.Year, sh.Plot, sh.Rating = n.Title, n.Year, n.Plot, n.MPAA
-			sh.Status, sh.Genres = n.Status, n.Genres
+			sh.Status, sh.Genres, sh.OriginalLanguage = n.Status, n.Genres, lang.Code(n.OriginalLang)
 			tmdb = nfoTMDB(n.UniqueIDs, b)
 		} else {
 			p := parseShowName(e.Name())

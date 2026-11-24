@@ -307,19 +307,21 @@ type movieView struct {
 	Watched bool   `json:"watched,omitempty"`
 	New     bool   `json:"new,omitempty"` // added in the last newFor, not watched or started
 	// For sorting: when it was added, and last played or marked watched.
-	Added       time.Time  `json:"added,omitzero"`
-	LastWatched time.Time  `json:"last_watched,omitzero"`
-	Position    float64    `json:"position,omitempty"`
-	Duration    float64    `json:"duration,omitempty"`
-	Plot        string     `json:"plot,omitempty"`
-	Tagline     string     `json:"tagline,omitempty"`
-	Runtime     int        `json:"runtime,omitempty"`
-	Rating      string     `json:"rating,omitempty"`
-	Genres      []string   `json:"genres,omitempty"`
-	Directors   []string   `json:"directors,omitempty"`
-	Streams     []string   `json:"streams,omitempty"`
-	Files       []fileView `json:"files,omitempty"` // one a stream, once probed
-	Subs        []subView  `json:"subs,omitempty"`
+	Added       time.Time `json:"added,omitzero"`
+	LastWatched time.Time `json:"last_watched,omitzero"`
+	Position    float64   `json:"position,omitempty"`
+	Duration    float64   `json:"duration,omitempty"`
+	Plot        string    `json:"plot,omitempty"`
+	Tagline     string    `json:"tagline,omitempty"`
+	Runtime     int       `json:"runtime,omitempty"`
+	Rating      string    `json:"rating,omitempty"`
+	Genres      []string  `json:"genres,omitempty"`
+	Directors   []string  `json:"directors,omitempty"`
+	// The language it was made in: ISO 639-1 ("da"), or zxx for none.
+	OriginalLanguage string     `json:"original_language,omitempty"`
+	Streams          []string   `json:"streams,omitempty"`
+	Files            []fileView `json:"files,omitempty"` // one a stream, once probed
+	Subs             []subView  `json:"subs,omitempty"`
 }
 
 type episodeView struct {
@@ -343,10 +345,11 @@ type episodeView struct {
 	Duration    float64    `json:"duration,omitempty"`
 	// The show's, so a client showing an episode on its own (in Up Next,
 	// say) has them without fetching the show.
-	Genres []string `json:"genres,omitempty"`
-	Rating string   `json:"rating,omitempty"`
-	Poster string   `json:"poster,omitempty"` // the season's, else the show's
-	Fanart string   `json:"fanart,omitempty"`
+	Genres           []string `json:"genres,omitempty"`
+	Rating           string   `json:"rating,omitempty"`
+	OriginalLanguage string   `json:"original_language,omitempty"`
+	Poster           string   `json:"poster,omitempty"` // the season's, else the show's
+	Fanart           string   `json:"fanart,omitempty"`
 }
 
 type seasonView struct {
@@ -368,13 +371,15 @@ type showView struct {
 	NewCount  int    `json:"new_count,omitempty"` // of those, added in the last newFor
 	// For sorting: its newest episode's Added, and the latest episode's
 	// LastWatched, specials included.
-	Added       time.Time    `json:"added,omitzero"`
-	LastWatched time.Time    `json:"last_watched,omitzero"`
-	Plot        string       `json:"plot,omitempty"`
-	Rating      string       `json:"rating,omitempty"`
-	Status      string       `json:"status,omitempty"`
-	Genres      []string     `json:"genres,omitempty"`
-	Seasons     []seasonView `json:"seasons,omitempty"`
+	Added       time.Time `json:"added,omitzero"`
+	LastWatched time.Time `json:"last_watched,omitzero"`
+	Plot        string    `json:"plot,omitempty"`
+	Rating      string    `json:"rating,omitempty"`
+	Status      string    `json:"status,omitempty"`
+	Genres      []string  `json:"genres,omitempty"`
+	// The language it was made in: ISO 639-1 ("da"), or zxx for none.
+	OriginalLanguage string       `json:"original_language,omitempty"`
+	Seasons          []seasonView `json:"seasons,omitempty"`
 	// The one to play next, as Up Next has it (showNext); with the seasons.
 	NextEpisode string `json:"next_episode_id,omitempty"`
 }
@@ -411,6 +416,7 @@ func (s shelf) movieView(m *library.Movie, full bool) movieView {
 	if full {
 		v.Plot, v.Tagline, v.Rating = m.Plot, m.Tagline, m.Rating
 		v.Genres, v.Directors, v.Subs = m.Genres, m.Directors, s.subViews(m.ID, m.Subs)
+		v.OriginalLanguage = m.OriginalLanguage
 		for i := range m.Files {
 			if i == 0 {
 				v.Streams = append(v.Streams, s.link("/stream/"+m.ID))
@@ -429,7 +435,7 @@ func (s shelf) episodeView(e *library.Episode, full bool) episodeView {
 		Season: e.Season, Episode: e.Episodes[0], Title: e.Title, Aired: e.Aired, Runtime: e.Runtime,
 		Thumb: s.art(e.ID, "thumb", e.Thumb), Stream: s.link("/stream/" + e.ID),
 		Watched: p.Watched, Position: p.Position, Duration: p.Duration,
-		Genres: e.Show.Genres, Rating: e.Show.Rating,
+		Genres: e.Show.Genres, Rating: e.Show.Rating, OriginalLanguage: e.Show.OriginalLanguage,
 		Fanart: s.art(e.Show.ID, "fanart", e.Show.Fanart)}
 	for _, se := range e.Show.Seasons {
 		if se.Number == e.Season && se.Poster != "" {
@@ -479,6 +485,7 @@ func (s shelf) showView(sh *library.Show, full bool) showView {
 	if full {
 		v.Fanart = s.art(sh.ID, "fanart", sh.Fanart)
 		v.Plot, v.Rating, v.Status, v.Genres = sh.Plot, sh.Rating, sh.Status, sh.Genres
+		v.OriginalLanguage = sh.OriginalLanguage
 		for _, se := range sh.Seasons {
 			sn := seasonView{Number: se.Number, Name: se.Name,
 				Poster: s.art(sh.ID, fmt.Sprintf("season-%d", se.Number), se.Poster)}
