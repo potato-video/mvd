@@ -15,6 +15,7 @@
 #   make                          the standard build: webui files downloads unpack
 #   make PRESET=minimal           import, refresh, the API and streaming only
 #   make FEATURES="webui"         any mix
+#   make install                  build, then symlink mvd into ~/.local/bin (BINDIR=...)
 #   make router                   the same, for the GL-AR750S (big-endian MIPS)
 #   make sizes                    how much each feature adds, on the router
 #
@@ -50,12 +51,19 @@ BUILD    = $(GO) build -trimpath -ldflags='$(LDFLAGS)' -tags '$(FEATURES)'
 ROUTER   := CGO_ENABLED=0 GOOS=linux GOARCH=mips GOMIPS=softfloat
 ROUTER_OUT ?= mvd-linux-mips
 
-.PHONY: all mvd router mips arm64 release test sizes clean
+.PHONY: all mvd install router mips arm64 release test sizes clean
 
 all: mvd
 
 mvd:
 	$(BUILD) -o mvd ./cmd/mvd
+
+# Builds mvd, then links it into $(BINDIR) (default ~/.local/bin).
+BINDIR ?= $(HOME)/.local/bin
+
+install: mvd
+	mkdir -p '$(BINDIR)'
+	ln -sf '$(CURDIR)/mvd' '$(BINDIR)/mvd'
 
 router:
 	$(ROUTER) $(BUILD) -o $(ROUTER_OUT) ./cmd/mvd
