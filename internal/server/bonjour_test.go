@@ -2,6 +2,7 @@ package server
 
 import (
 	"net"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -19,7 +20,7 @@ func TestBonjourService(t *testing.T) {
 	if svc.Instance != "GL-AR750S" || svc.Host != "mvd-gl-ar750s" || svc.Type != "_mvd._tcp" || svc.Port != 6837 {
 		t.Errorf("%+v", svc)
 	}
-	if strings.Join(svc.TXT, " ") != "version=v1.2" {
+	if strings.Join(svc.TXT, " ") != "version=v1.2 api="+strconv.Itoa(APILevel) {
 		t.Errorf("TXT %q", svc.TXT)
 	}
 	if allow != nil {
@@ -29,7 +30,7 @@ func TestBonjourService(t *testing.T) {
 	cfg.Token = "secret"
 	cfg.MDNSName = "Living room"
 	svc, _, _ = bonjourService(cfg, "GL-AR750S")
-	if svc.Instance != "Living room" || svc.Host != "mvd-gl-ar750s" || strings.Join(svc.TXT, " ") != "version=v1.2 auth=token" {
+	if svc.Instance != "Living room" || svc.Host != "mvd-gl-ar750s" || strings.Join(svc.TXT, " ") != "version=v1.2 api="+strconv.Itoa(APILevel)+" auth=token" {
 		t.Errorf("%+v", svc)
 	}
 }

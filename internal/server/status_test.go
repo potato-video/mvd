@@ -3,6 +3,7 @@ package server
 import (
 	"os"
 	"runtime"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -27,7 +28,7 @@ func TestStatus(t *testing.T) {
 	ts.json("GET", "/api/status", "", &st)
 	ix := ts.sv.ix.Load()
 	switch {
-	case st.Version != Version || st.Go != runtime.Version() || st.Platform != runtime.GOOS+"/"+runtime.GOARCH:
+	case st.Version != Version || st.API != APILevel || st.Go != runtime.Version() || st.Platform != runtime.GOOS+"/"+runtime.GOARCH:
 		t.Errorf("build: %+v", st)
 	case !st.Started.Equal(start) || st.Uptime != 5400:
 		t.Errorf("started %v, uptime %d", st.Started, st.Uptime)
@@ -45,6 +46,19 @@ func TestStatus(t *testing.T) {
 	// What the system sees, where there's /proc to ask (the router, Linux).
 	if _, err := os.Stat("/proc/self/status"); err == nil && (st.Memory.RSS == 0 || st.Memory.PeakRSS < st.Memory.RSS) {
 		t.Errorf("rss: %+v", st.Memory)
+	}
+}
+
+// Every response says the API's level, beside the build, refusals too.
+func TestAPILevelHeader(t *testing.T) {
+	ts := newTestServer(t, "secret")
+	defer ts.hs.Close()
+	for _, path := range []string{"/api/status", "/api/movies"} {
+		r := ts.do("GET", path, "", nil)
+		r.Body.Close()
+		if r.Header.Get("X-Mvd-Api") != strconv.Itoa(APILevel) || r.Header.Get("X-Mvd-Version") != Version {
+			t.Errorf("%s (%d): %v", path, r.StatusCode, r.Header)
+		}
 	}
 }
 

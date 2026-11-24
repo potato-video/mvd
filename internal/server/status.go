@@ -20,6 +20,7 @@ import (
 // of /proc/self/status and a statfs of the library's drive.
 type statusView struct {
 	Version    string        `json:"version"`
+	API        int           `json:"api"` // APILevel
 	Go         string        `json:"go"`
 	Platform   string        `json:"platform"` // "linux/mips"
 	Started    time.Time     `json:"started"`
@@ -71,7 +72,7 @@ type libraryCounts struct {
 func (sv *Server) status() statusView {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
-	st := statusView{Version: Version, Go: runtime.Version(), Platform: runtime.GOOS + "/" + runtime.GOARCH,
+	st := statusView{Version: Version, API: APILevel, Go: runtime.Version(), Platform: runtime.GOOS + "/" + runtime.GOARCH,
 		Started: sv.started, Uptime: int64(sv.clock().Sub(sv.started) / time.Second),
 		Memory:     memoryView{Go: ms.Sys, Heap: ms.HeapAlloc, GCs: ms.NumGC},
 		Goroutines: runtime.NumGoroutine()}

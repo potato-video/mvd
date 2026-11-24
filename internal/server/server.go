@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -195,9 +196,20 @@ func (sv *Server) rescan() *library.Index {
 // the binary just installed.
 var Version = "dev"
 
+// APILevel is the API's, which only grows: it goes up by one with each
+// addition a client may rely on (a route, a field, a value), and nothing
+// is ever taken away or changed in meaning. Every response says it
+// (X-Mvd-Api), as do /api/status and the Bonjour TXT, so a client can tell
+// what a server has without making sense of its build. A server without
+// it is level 1. api/openapi.yaml's info.version is the same number.
+const APILevel = 1
+
+var apiLevel = strconv.Itoa(APILevel)
+
 func versioned(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Mvd-Version", Version)
+		w.Header().Set("X-Mvd-Api", apiLevel)
 		next.ServeHTTP(w, r)
 	})
 }

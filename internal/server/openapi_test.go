@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -46,5 +47,17 @@ func TestOpenAPICoversRoutes(t *testing.T) {
 	}
 	if len(registered) < 10 {
 		t.Errorf("found only %d routes: has the registration code changed shape?", len(registered))
+	}
+}
+
+// api/openapi.yaml's info.version is the API's level.
+func TestOpenAPIVersionIsAPILevel(t *testing.T) {
+	spec, err := os.ReadFile("../../api/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^info:\n(?:  .*\n)*?  version: "?(\d+)"?$`).FindSubmatch(spec)
+	if m == nil || string(m[1]) != strconv.Itoa(APILevel) {
+		t.Errorf("info.version %q, APILevel %d", m, APILevel)
 	}
 }

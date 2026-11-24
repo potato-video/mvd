@@ -51,7 +51,7 @@ func bonjourService(cfg config.Config, hostname string) (svc mdns.Service, allow
 
 	short, _, _ := strings.Cut(hostname, ".") // "GL-AR750S.lan", "Warrens-Mac.local"
 	svc = mdns.Service{Instance: cfg.MDNSName, Type: "_mvd._tcp", Host: hostLabel(short), Port: port,
-		TXT: []string{"version=" + Version}}
+		TXT: []string{"version=" + Version, "api=" + apiLevel}}
 	if svc.Instance == "" {
 		svc.Instance = short
 	}

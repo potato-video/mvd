@@ -754,8 +754,9 @@ just what's needed.
   messages count. Elsewhere, or if the socket can't be had, the networks
   are listed every minute. A new network is probed and announced on; one
   that's gone is forgotten.
-- **TXT:** `version` (the build), and `auth=token` when a token is set, so a
-  client pairs (or asks for it) before trying.
+- **TXT:** `version` (the build), `api` (the API's level), and
+  `auth=token` when a token is set, so a client pairs (or asks for it)
+  before trying.
 - **Cheap to ask:** anyone on the LAN can send packets as fast as they
   like, and every device's mDNS traffic arrives here, responses too (to
   spot conflicts). At most 32 questions and 64 records of a packet are
@@ -1235,6 +1236,19 @@ them there.
 - **Every response has `X-Mvd-Version`,** the server's build (`git
   describe`). `mvd version` compares it with its own, since replacing the
   binary doesn't restart the server.
+- **The API only grows.** No route, field or value is removed or renamed,
+  or changes its meaning or type; a new field is optional to read, and a
+  new request field defaults to the old behavior. If something has to
+  change, the new form goes beside the old one, which stays. Clients skip
+  what they don't know, so a new field, `kind` or `reason` is safe.
+- **Every response has `X-Mvd-Api`,** the API's level (`server.APILevel`,
+  also in `/api/status` and the Bonjour TXT): raise it by one, in the same
+  commit, with each addition a client may rely on, and say "API level N"
+  where the addition is described in `api/openapi.yaml`, whose
+  `info.version` is the same number (a test checks). A server without the
+  header is level 1. Clients decide by the level, never by the build
+  (`dev` and forks' tags don't order): the Apple apps hide what the
+  server's level is too low for, and refuse one below their minimum.
 - **Clients sort the lists themselves.** The whole list comes in one
   response, so the server only gives the fields to sort on: `year`,
   `added` and `last_watched` on each movie and show, `runtime` on movies

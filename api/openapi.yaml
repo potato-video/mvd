@@ -64,6 +64,17 @@ info:
     add nothing to it. Signed links don't expire; they stop working when
     that token changes. Without a token they're plain paths.
 
+    **Versions.** The API only grows: no route, field or value is removed
+    or renamed, or changes its meaning or type, and a new request field
+    defaults to the old behavior. Every response has `X-Mvd-Api: N`, the
+    API's level (this document's `info.version`), raised by one with each
+    addition a client may rely on; what's newer than level 1 says "API
+    level N" where it's described. A server without the header is level 1.
+    `X-Mvd-Version` is the server's build, for showing, not comparing. A
+    client should skip fields and values it doesn't know (a new `kind`, a
+    new Up Next `reason`) rather than fail, and hide what the server's
+    level is too low for.
+
     **Errors** are plain text unless noted; the JSON endpoints that can fail in
     interesting ways return `{"error": "..."}`.
   license:
@@ -1577,9 +1588,10 @@ components:
 
     Status:
       type: object
-      required: [version, go, platform, started, uptime, memory, goroutines, library, uploads, access]
+      required: [version, api, go, platform, started, uptime, memory, goroutines, library, uploads, access]
       properties:
         version: { type: string, description: "The server's build (git describe), as in X-Mvd-Version" }
+        api: { type: integer, description: "The API's level, as in X-Mvd-Api" }
         go: { type: string, description: "The Go it was built with" }
         platform: { type: string, description: "\"linux/mips\" and the like" }
         started: { type: string, format: date-time }
