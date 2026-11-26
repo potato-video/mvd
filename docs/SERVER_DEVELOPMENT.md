@@ -762,6 +762,17 @@ just what's needed.
   messages count. Elsewhere, or if the socket can't be had, the networks
   are listed every minute. A new network is probed and announced on; one
   that's gone is forgotten.
+- **Sockets that stop working** (macOS): local network privacy can refuse
+  a socket for good when its rules change under it (installing an app, in
+  a simulator too, makes them change): every send fails with "no route to
+  host" and nothing more arrives, while a new socket is let through. So on
+  a Mac a send to the group that fails has the responder open both
+  sockets afresh (at once the first time, then at most once a minute),
+  join the groups again, and probe and announce on every network, which
+  tries the new sockets. A deaf socket may have nothing to send, so the
+  sockets are also tried every minute: a response with no records, to
+  each group, which every responder ignores. Elsewhere, a failed send is
+  only lost.
 - **TXT:** `version` (the build), `api` (the API's level), and
   `auth=token` when a token is set, so a client pairs (or asks for it)
   before trying.

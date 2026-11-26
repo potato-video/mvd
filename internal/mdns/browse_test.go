@@ -157,3 +157,43 @@ func TestLiveBrowse(t *testing.T) {
 		t.Errorf("found %+v", found)
 	}
 }
+
+// A responder whose sockets stop working is found again: it tries them
+// now and then, and opens new ones if a send fails. (On a Mac, the local
+// network privacy rules changing under a socket, as installing an app in a
+// simulator does, can leave it refusing every send, and deaf, for good.)
+// Here they're closed from under it. Only when asked for
+// (MVD_TEST_NETWORK=1), as above.
+func TestLiveReopen(t *testing.T) {
+	if os.Getenv("MVD_TEST_NETWORK") == "" {
+		t.Skip("set MVD_TEST_NETWORK=1 to try the real network")
+	}
+	anyAddress = true
+	defer func() { anyAddress = false }()
+	every := checkEvery
+	checkEvery = time.Second
+	defer func() { checkEvery = every }()
+	logf := func(f string, a ...any) { t.Logf(f, a...) }
+	s := Service{Instance: "mvd's reopen test", Type: "_mvd-test._tcp", Host: "mvd-test", Port: 6839}
+	r, err := Start(s, nil, logf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	time.Sleep(2 * time.Second) // asking, announcing
+	r.mu.Lock()
+	for _, c := range [...]*net.UDPConn{r.conn4, r.conn6} {
+		if c != nil {
+			c.Close()
+		}
+	}
+	r.mu.Unlock()
+	time.Sleep(4 * time.Second) // tried, opened again, asking, announcing
+	found, err := Browse("_mvd-test._tcp", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 1 || found[0].Name != s.Instance {
+		t.Errorf("found %+v", found)
+	}
+}

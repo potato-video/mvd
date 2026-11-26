@@ -3,6 +3,7 @@ package mdns
 import (
 	"context"
 	"net"
+	"runtime"
 	"slices"
 	"sync"
 	"time"
@@ -21,11 +22,17 @@ type Responder struct {
 	allow        func(ifname string, ip net.IP) bool
 	logf         func(format string, args ...any)
 
-	mu      sync.Mutex // everything below, and sends: each sets the interface, then writes
+	mu      sync.Mutex // everything below, the sockets, and sends: each sets the interface, then writes
 	eng     *engine
 	joined  map[membership]bool // interfaces joined to the group
-	timer   *time.Timer         // goes off at eng.next()
+	timer   *time.Timer         // goes off at eng.next(), or when the sockets are due to be opened again
 	stopped bool
+	// A send to the group failed (failed), and the sockets are to be
+	// opened afresh: now, or a minute after they last were (opened).
+	// failing: it's been said, and isn't again until a send works.
+	failed, failing bool
+	opened          time.Time
+	checked         time.Time // when the sockets were last tried (check)
 
 	stop chan struct{}
 	done sync.WaitGroup
@@ -41,7 +48,7 @@ type membership struct {
 // private network), over IPv4 and IPv6, whichever the machine has. It
 // watches for networks coming and going. logf says what it's doing.
 func Start(svc Service, allow func(ifname string, ip net.IP) bool, logf func(string, ...any)) (*Responder, error) {
-	r := &Responder{allow: allow, logf: logf, joined: map[membership]bool{}, stop: make(chan struct{})}
+	r := &Responder{allow: allow, logf: logf, joined: map[membership]bool{}, stop: make(chan struct{}), checked: time.Now()}
 	var err, err6 error
 	if r.conn4, err = listen("udp4", "0.0.0.0:5353", setup); err != nil {
 		if r.conn6, err6 = listen("udp6", "[::]:5353", setup6); err6 != nil {
@@ -53,15 +60,66 @@ func Start(svc Service, allow func(ifname string, ip net.IP) bool, logf func(str
 	r.eng = newEngine(svc, r.send, logf)
 	r.timer = time.AfterFunc(time.Hour, r.wake)
 	r.refresh()
+	r.mu.Lock()
+	r.serveAll()
+	r.mu.Unlock()
+	r.done.Add(1)
+	go r.watch()
+	return r, nil
+}
+
+// serveAll starts listening on each socket. Call it with r.mu held.
+func (r *Responder) serveAll() {
 	for _, c := range [...]*net.UDPConn{r.conn4, r.conn6} {
 		if c != nil {
 			r.done.Add(1)
 			go r.serve(c, c == r.conn6)
 		}
 	}
+}
+
+// reopen opens the sockets afresh, as a send to the group failed: on a
+// Mac, local network privacy can leave a socket refusing every send, and
+// deaf, after its rules change (installing an app does that), while a new
+// one is let through. Every network is joined, asked for and announced on
+// again, which tries the new sockets. A socket that can't be opened again
+// stays closed, so sends on it fail and it's tried again a minute later.
+// Call it with r.mu held.
+func (r *Responder) reopen(now time.Time) {
+	r.failed, r.opened = false, now
+	opened := false
+	for _, s := range [...]struct {
+		c                *net.UDPConn
+		network, address string
+		setup            func(fd uintptr) error
+	}{{r.conn4, "udp4", "0.0.0.0:5353", setup}, {r.conn6, "udp6", "[::]:5353", setup6}} {
+		if s.c == nil {
+			continue
+		}
+		s.c.Close() // first, so the port isn't shared with it
+		c, err := listen(s.network, s.address, s.setup)
+		if err != nil {
+			r.logf("mvd: Bonjour: %v", err)
+			continue
+		}
+		if s.c == r.conn4 {
+			r.conn4 = c
+		} else {
+			r.conn6 = c
+		}
+		opened = true
+	}
+	if !opened {
+		return
+	}
+	clear(r.joined)
+	r.eng.setNetworks(now, nil)
+	r.serveAll()
 	r.done.Add(1)
-	go r.watch()
-	return r, nil
+	go func() {
+		defer r.done.Done()
+		r.refresh()
+	}()
 }
 
 // listen opens a socket on the mDNS port that shares it, set up by setup.
@@ -99,7 +157,10 @@ func (r *Responder) Close() {
 // refresh finds the networks now, joins the group on new interfaces, and
 // tells the engine. Call it with r.mu not held.
 func (r *Responder) refresh() {
-	nets := list(interfaces(), r.allow, r.conn4 != nil, r.conn6 != nil)
+	r.mu.Lock()
+	v4, v6 := r.conn4 != nil, r.conn6 != nil
+	r.mu.Unlock()
+	nets := list(interfaces(), r.allow, v4, v6)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.stopped {
@@ -143,14 +204,33 @@ func (r *Responder) wake() {
 		return
 	}
 	now := time.Now()
+	if checkEvery > 0 && !now.Before(r.checked.Add(checkEvery)) {
+		r.check(now)
+	}
 	r.eng.tick(now)
 	r.arm(now)
 }
 
-// arm sets the timer for when the engine next wants a tick. Call it with
-// r.mu held, after anything that may have changed that.
+// arm sets the timer for when the engine next wants a tick, the sockets
+// are due to be tried, or opened again (opening them if that's now).
+// Call it with r.mu held, after anything that may have changed that.
 func (r *Responder) arm(now time.Time) {
-	if next := r.eng.next(); next.IsZero() {
+	if r.failed && !now.Before(r.opened.Add(time.Minute)) {
+		r.reopen(now)
+	}
+	next := r.eng.next()
+	sooner := func(at time.Time) {
+		if next.IsZero() || at.Before(next) {
+			next = at
+		}
+	}
+	if r.failed {
+		sooner(r.opened.Add(time.Minute))
+	}
+	if checkEvery > 0 {
+		sooner(r.checked.Add(checkEvery))
+	}
+	if next.IsZero() {
 		r.timer.Stop()
 	} else {
 		r.timer.Reset(max(next.Sub(now), 0))
@@ -181,6 +261,12 @@ func (r *Responder) serve(conn *net.UDPConn, v6 bool) {
 			}
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				continue
+			}
+			r.mu.Lock()
+			replaced := conn != r.conn4 && conn != r.conn6
+			r.mu.Unlock()
+			if replaced {
+				return
 			}
 			// Something passing (an interface going down, say): say so
 			// once, and keep listening, rather than end Bonjour until the
@@ -227,20 +313,33 @@ func (r *Responder) serve(conn *net.UDPConn, v6 bool) {
 // send sends b on n: to one address, or (to nil) to the group, out of n's
 // interface. Call it with r.mu held.
 func (r *Responder) send(n *network, to *net.UDPAddr, b []byte) {
+	var err error
 	switch {
 	case n.v6 && to != nil:
 		r.conn6.WriteToUDP(b, to)
+		return
 	case n.v6:
-		if control(r.conn6, func(fd uintptr) error { return multicastInterface6(fd, n.ifindex) }) == nil {
-			r.conn6.WriteToUDP(b, group6)
+		if err = control(r.conn6, func(fd uintptr) error { return multicastInterface6(fd, n.ifindex) }); err == nil {
+			_, err = r.conn6.WriteToUDP(b, group6)
 		}
 	case to != nil:
 		r.conn4.WriteToUDP(b, to)
+		return
 	default:
-		if control(r.conn4, func(fd uintptr) error { return multicastInterface(fd, n.ip) }) == nil {
-			r.conn4.WriteToUDP(b, group)
+		if err = control(r.conn4, func(fd uintptr) error { return multicastInterface(fd, n.ip) }); err == nil {
+			_, err = r.conn4.WriteToUDP(b, group)
 		}
 	}
+	// One to the group that fails, where a socket can stop working for
+	// good: the sockets are opened again (arm).
+	if checkEvery == 0 {
+		return
+	}
+	if err != nil && !r.failing {
+		r.logf("mvd: Bonjour: %v: listening afresh", err)
+	}
+	r.failed = r.failed || err != nil
+	r.failing = err != nil
 }
 
 func control(c *net.UDPConn, f func(fd uintptr) error) error {
@@ -253,4 +352,29 @@ func control(c *net.UDPConn, f func(fd uintptr) error) error {
 		return err
 	}
 	return ferr
+}
+
+// checkEvery is how often the sockets are tried, where a socket can stop
+// working for good: on a Mac (local network privacy). Zero: they aren't,
+// and a send that fails isn't a reason to open them again either.
+var checkEvery = func() time.Duration {
+	if runtime.GOOS == "darwin" {
+		return time.Minute
+	}
+	return 0
+}()
+
+// check tries the sockets: a response with nothing in it, to each group
+// on one of its networks, which every responder ignores. Sending fails if
+// the socket's refused (send then says so, and arm opens them again).
+// Call it with r.mu held.
+func (r *Responder) check(now time.Time) {
+	r.checked = now
+	four, six := false, false
+	for _, n := range r.eng.nets {
+		if n.v6 && !six || !n.v6 && !four {
+			r.send(n, nil, newBuilder(0, 0x8400).b)
+			six, four = six || n.v6, four || !n.v6
+		}
+	}
 }
