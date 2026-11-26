@@ -33,6 +33,7 @@ data_dir = "/mnt/drive/.mvd"
 #port    = 6837
 #token   = "something-long"        # the admin's: every request then needs a token. mvd setup token makes one
 #host_names = "media.example.com"  # without a token: real domain names you reach it by
+#client_ip_header = ""  # behind a hosting service's proxy: the header with the client's address ("CF-Connecting-IP")
 
 # Uploads from the web UI's Files page (and /api/uploads), into the import folder.
 #uploads = true           # false: no uploader, and /api/uploads answers 404

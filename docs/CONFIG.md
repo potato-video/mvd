@@ -134,6 +134,7 @@ How `mvd server` listens, and who it lets in.
 | `port` | `6837` | the port to listen on |
 | `token` | `""` (none) | the admin's password: every request must carry a token, or something made from one |
 | `host_names` | `""` | domain names the server is reached by, comma-separated |
+| `client_ip_header` | `""` | the header a hosting service's proxy puts the client's address in |
 | `[[server.tokens]]` | none | more tokens, which can only watch: see [Tokens](#tokens) |
 
 **`address`:** empty listens on every interface. `"127.0.0.1"` is this
@@ -166,6 +167,18 @@ protects against DNS rebinding. IP
 addresses and local names (`router`, `nas.lan`, `mvd.local`) are always
 fine. List any real domain you reach it by:
 `host_names = "media.example.com"`. With a token, it isn't needed.
+
+**`client_ip_header`:** only for a server behind a hosting service's
+proxy, such as Render's. [Wrong guesses](#what-a-token-protects) are
+counted by address, and there every request comes from the proxy, so
+without this a few wrong tokens from anyone would slow down everyone. Set
+it to the header the proxy puts the client's address in:
+`client_ip_header = "CF-Connecting-IP"` behind Cloudflare, Render
+included. It's believed only from a connection on this machine or a
+private network (10.x, 192.168.x and so on), and only set it when every
+request comes through that proxy: anyone who reaches the server directly
+from such a network could send the header themselves. A reverse proxy on
+the same machine doesn't need it.
 
 ### Tokens
 
@@ -244,7 +257,9 @@ with a new token, to paste in.
 - **Wrong guesses** are slowed down: after five in a row from one
   address, that address has to wait, a second and then longer each time,
   up to a minute at a time. Behind a reverse proxy on the same machine,
-  the address is the one the proxy passes on in `X-Forwarded-For`.
+  the address is the one the proxy passes on in `X-Forwarded-For`; behind
+  a hosting service's, the one in
+  [`client_ip_header`](#server).
 - **`?token=` and `Authorization: Bearer`** still work, for a URL typed
   into mpv, for `curl`, and for `mvd`'s own commands. They send the
   token itself.

@@ -258,7 +258,7 @@ func (sv *Server) pairRoutes(mux *http.ServeMux) {
 // pairLocked answers a device's request from an address that's made too
 // many wrong guesses, as for any credential.
 func (sv *Server) pairLocked(w http.ResponseWriter, r *http.Request) bool {
-	if wait := sv.guesses.wait(clientAddr(r), sv.clock()); wait > 0 {
+	if wait := sv.guesses.wait(sv.clientAddr(r), sv.clock()); wait > 0 {
 		tooMany(w, wait)
 		return true
 	}
@@ -286,7 +286,7 @@ func (sv *Server) apiPairStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "public_key must be 32 bytes (X25519), base64url", http.StatusBadRequest)
 		return
 	}
-	code, addr, now := pairCode(key), clientAddr(r), sv.clock()
+	code, addr, now := pairCode(key), sv.clientAddr(r), sv.clock()
 	p := &sv.pairs
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -350,7 +350,7 @@ func (sv *Server) apiPairCollect(w http.ResponseWriter, r *http.Request) {
 	p.mu.Unlock()
 	switch {
 	case req == nil:
-		sv.guesses.fail(clientAddr(r), sv.clock())
+		sv.guesses.fail(sv.clientAddr(r), sv.clock())
 		http.Error(w, "no such code: it may have expired, been refused, or been collected", http.StatusNotFound)
 	case box == nil:
 		w.Header().Set("Content-Type", "application/json")

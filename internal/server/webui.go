@@ -785,7 +785,7 @@ func (sv *Server) uiLogin(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, next, http.StatusSeeOther) // nothing to sign in to
 		return
 	}
-	addr, now := clientAddr(r), sv.clock()
+	addr, now := sv.clientAddr(r), sv.clock()
 	if wait := sv.guesses.wait(addr, now); wait > 0 {
 		secs := int((wait + time.Second - 1) / time.Second)
 		w.Header().Set("Retry-After", fmt.Sprint(secs))

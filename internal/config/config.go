@@ -38,6 +38,7 @@ type Config struct {
 	Token             string  // the admin's
 	Tokens            []Token // [[server.tokens]]: viewers, who can only watch
 	HostNames         string  // extra names the server answers changes on (DNS rebinding guard)
+	ClientIPHeader    string  // the header a reverse proxy puts the client's address in, for limiting guesses
 	Uploads           bool    // uploads from the Incoming page and mvd upload: /api/uploads
 	UploadPreallocate bool    // set an upload's full size on the drive before its first piece
 	UploadBuffer      int64   // memory each piece is written through
@@ -219,6 +220,7 @@ var settings = map[string]func(c *Config, v string) error{
 	},
 	"server.token":              text(func(c *Config) *string { return &c.Token }),
 	"server.host_names":         text(func(c *Config) *string { return &c.HostNames }),
+	"server.client_ip_header":   text(func(c *Config) *string { return &c.ClientIPHeader }),
 	"server.uploads":            boolean(func(c *Config) *bool { return &c.Uploads }),
 	"server.upload_preallocate": boolean(func(c *Config) *bool { return &c.UploadPreallocate }),
 	"server.upload_buffer": func(c *Config, v string) error {
