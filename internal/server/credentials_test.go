@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -249,8 +250,8 @@ func TestSessionCookie(t *testing.T) {
 // success clears it.
 func TestGuessLimit(t *testing.T) {
 	var g guesses
-	a := addrOf("192.0.2.1:5000", "")
-	b := addrOf("192.0.2.2:5000", "")
+	a := addrOf("192.0.2.1:5000", "", "")
+	b := addrOf("192.0.2.2:5000", "", "")
 	now := time.Unix(1000, 0)
 	for i := range 4 {
 		g.fail(a, now)
@@ -287,21 +288,21 @@ func TestGuessLimit(t *testing.T) {
 	// The table doesn't grow: the oldest failure makes room.
 	var h guesses
 	for i := range 2 * len(h.t) {
-		x := addrOf(fmt.Sprintf("198.51.100.%d:1", i), "")
+		x := addrOf(fmt.Sprintf("198.51.100.%d:1", i), "", "")
 		for range 5 {
 			h.fail(x, now.Add(time.Duration(i)*time.Second))
 		}
 	}
-	last := addrOf(fmt.Sprintf("198.51.100.%d:1", 2*len(h.t)-1), "")
+	last := addrOf(fmt.Sprintf("198.51.100.%d:1", 2*len(h.t)-1), "", "")
 	if h.wait(last, now.Add(time.Duration(2*len(h.t)-1)*time.Second)) == 0 {
 		t.Error("the newest isn't kept")
 	}
 
 	// Behind a proxy on the same machine, the forwarded address counts.
-	if addrOf("127.0.0.1:1", "10.0.0.1, 192.0.2.9") != addrOf("192.0.2.9:7", "") {
+	if addrOf("127.0.0.1:1", "10.0.0.1, 192.0.2.9", "") != addrOf("192.0.2.9:7", "", "") {
 		t.Error("X-Forwarded-For from loopback isn't used")
 	}
-	if addrOf("192.0.2.1:1", "192.0.2.9") != a {
+	if addrOf("192.0.2.1:1", "192.0.2.9", "") != a {
 		t.Error("X-Forwarded-For from elsewhere is believed")
 	}
 	if n := testing.AllocsPerRun(100, func() { g.fail(a, now); g.wait(a, now); g.ok(a) }); n != 0 {
@@ -370,5 +371,36 @@ func benchList(b *testing.B, signed bool) {
 			_ = s.art(id, "poster", "x")
 			_ = s.art(id, "fanart", "x")
 		}
+	}
+}
+
+// Behind a proxy that isn't on loopback (a hosting service's, on a private
+// address), client_ip_header names the header with the client's address:
+// two clients are two addresses, not the proxy's one, so five wrong tokens
+// from one don't lock the other out.
+func TestGuessLimitBehindRemoteProxy(t *testing.T) {
+	// As Render passes them on: the connection from its proxy, an
+	// X-Forwarded-For with the Cloudflare edge last, and Cloudflare's header.
+	a := addrOf("10.21.157.68:4000", "198.51.100.7, 104.22.17.40", "198.51.100.7")
+	b := addrOf("10.21.157.68:4000", "203.0.113.9, 104.22.17.40", "203.0.113.9")
+	var g guesses
+	now := time.Unix(1000, 0)
+	for range 5 {
+		g.fail(a, now)
+	}
+	if w := g.wait(b, now); w != 0 {
+		t.Errorf("another client behind the proxy waits %v (both are %v and %v)", w, a, b)
+	}
+	if a != netip.MustParseAddr("198.51.100.7") {
+		t.Errorf("the client is %v", a)
+	}
+
+	// The header is believed only from a proxy on loopback or a private
+	// network: a client reaching the server directly can't pick its address.
+	if addrOf("192.0.2.1:1", "", "198.51.100.7") != netip.MustParseAddr("192.0.2.1") {
+		t.Error("the header from a public address is believed")
+	}
+	if addrOf("10.0.0.1:1", "", "nonsense") != netip.MustParseAddr("10.0.0.1") {
+		t.Error("a header that isn't an address isn't the connection's")
 	}
 }

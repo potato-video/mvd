@@ -987,9 +987,12 @@ row an address is locked out for a second, doubling to a minute; while it
 is, anything from it that presents a credential is a `429` with
 `Retry-After`, without the credential being checked. A success clears the
 address. When the table is full, the entry whose last failure is oldest
-makes room. The address is the connection's, or, when that's loopback and
-there's an `X-Forwarded-For`, its last entry (a reverse proxy on the same
-machine).
+makes room. The address is the connection's; or, when that's loopback or
+private and `client_ip_header` is set, that header's (a hosting service's
+proxy, such as Cloudflare's `CF-Connecting-IP` on Render, where the
+connection is from a 10.x proxy and `X-Forwarded-For` ends in a Cloudflare
+edge that many clients share); or, when it's loopback and there's an
+`X-Forwarded-For`, its last entry (a reverse proxy on the same machine).
 
 **Pairing** (`pair.go`) gives a device a token's key id and request key
 without the token being typed on it. Waiting requests live in a map behind

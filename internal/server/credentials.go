@@ -270,14 +270,22 @@ func (g *guesses) ok(addr netip.Addr) {
 }
 
 // addrOf is the address a request comes from, for counting guesses: the
-// connection's, but behind a reverse proxy on the same machine (loopback,
-// with X-Forwarded-For), the last address the proxy added.
-func addrOf(remote, forwarded string) netip.Addr {
+// connection's, but behind a reverse proxy on loopback or a private
+// network, the client's address in the header client_ip_header names
+// (client, "" when it isn't set or the request has none), and behind one
+// on the same machine (loopback, with X-Forwarded-For), the last address
+// the proxy added.
+func addrOf(remote, forwarded, client string) netip.Addr {
 	ap, err := netip.ParseAddrPort(remote)
 	if err != nil {
 		return netip.Addr{}
 	}
 	a := ap.Addr().Unmap()
+	if client != "" && (a.IsLoopback() || a.IsPrivate()) {
+		if f, err := netip.ParseAddr(strings.TrimSpace(client)); err == nil {
+			return f.Unmap()
+		}
+	}
 	if a.IsLoopback() && forwarded != "" {
 		last := forwarded
 		if i := strings.LastIndexByte(forwarded, ','); i >= 0 {
@@ -290,8 +298,12 @@ func addrOf(remote, forwarded string) netip.Addr {
 	return a
 }
 
-func clientAddr(r *http.Request) netip.Addr {
-	return addrOf(r.RemoteAddr, r.Header.Get("X-Forwarded-For"))
+func (sv *Server) clientAddr(r *http.Request) netip.Addr {
+	var client string
+	if h := sv.cfg.ClientIPHeader; h != "" {
+		client = r.Header.Get(h)
+	}
+	return addrOf(r.RemoteAddr, r.Header.Get("X-Forwarded-For"), client)
 }
 
 // tooMany answers a locked-out address.

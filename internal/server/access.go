@@ -304,7 +304,7 @@ func (sv *Server) auth(mux *http.ServeMux) http.Handler {
 // Wrong ones are counted by address (guesses), and an address that's
 // made too many waits, whatever it presents.
 func (sv *Server) credentialed(w http.ResponseWriter, r *http.Request, pattern string) *access {
-	addr, now := clientAddr(r), sv.clock()
+	addr, now := sv.clientAddr(r), sv.clock()
 	h, q := r.Header.Get("Authorization"), r.URL.Query()
 	signed := strings.HasPrefix(h, requestScheme+" ")
 	bearer := strings.HasPrefix(h, "Bearer ")
