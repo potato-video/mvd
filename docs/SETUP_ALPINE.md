@@ -205,8 +205,9 @@ Put some videos in `/mnt/media/video/import`, then:
 su mvd -c 'mvd import'
 ```
 
-Run mvd's commands as `mvd` like this, so what they write belongs to it:
-run as root, they leave files the server can't move or trash. Then open
+Run mvd's commands as `mvd` like this, so they read the server's config and
+what they write belongs to it: run as root, they read root's config and
+leave files the server can't move or trash, and mvd warns. Then open
 `http://192.168.8.1:6837/`. The Apple TV app finds the server by itself
 (see [CLIENTS.md](CLIENTS.md)).
 

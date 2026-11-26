@@ -885,7 +885,7 @@ func CheckImport(cfg config.Config, src string) error {
 	case cfg.MoviesDir == "" || cfg.TVDir == "":
 		return errors.New("set video_dir (or movies_dir and tv_dir) under [paths] in config.toml, so mvd knows where to file things")
 	case cfg.APIKey == "":
-		return errors.New("no TMDB API key: set TMDB_API_KEY, or api_key under [tmdb] in config.toml")
+		return errors.New("no TMDB API key: set TMDB_API_KEY, or api_key under [tmdb] in " + config.Path())
 	}
 	src, _ = filepath.Abs(src)
 	for _, lib := range []string{cfg.MoviesDir, cfg.TVDir} {

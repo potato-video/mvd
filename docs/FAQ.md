@@ -16,6 +16,15 @@ logs to the terminal.
 The running server is still the old binary. `mvd version` compares the two.
 Restart the service.
 
+## mvd says "running as root" or "no TMDB API key", but the server works
+
+mvd reads `~/.config/mvd/config.toml` for whoever runs it, so as root it
+reads root's config, not the server's, and leaves files the server can't
+move or trash. Except on OpenWRT, where the service runs as root, run mvd's
+commands as the user the service runs as: `su mvd -c 'mvd refresh'` on
+Alpine, and without `sudo` with systemd or on a Mac. The "no TMDB API key"
+message names the config it read.
+
 ## The browser won't play a file
 
 Browsers play MP4 with H.264 reliably, and MKV in Chrome; most other

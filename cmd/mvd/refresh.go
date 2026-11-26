@@ -78,7 +78,7 @@ func cmdRefresh(args []string) int {
 		cfg.Region = *region
 	}
 	if cfg.APIKey == "" {
-		fmt.Fprintln(os.Stderr, "mvd: no TMDB API key: set TMDB_API_KEY, or api_key under [tmdb] in ~/.config/mvd/config.toml")
+		fmt.Fprintln(os.Stderr, noAPIKey())
 		return 2
 	}
 	dir := ""

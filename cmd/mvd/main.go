@@ -70,6 +70,9 @@ func main() {
 		}
 		return
 	}
+	if w := rootWarning(args[0], os.Geteuid(), serviceKind()); w != "" {
+		fmt.Fprintln(os.Stderr, w)
+	}
 	switch {
 	case args[0] == "import":
 		os.Exit(cmdImport(args[1:]))
