@@ -3,17 +3,22 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 // Needs you on the Incoming page (needs.go has the answers): a card's
-// search, the dialog that confirms a title, Import, and Try again.
+// search, the dialog that confirms a title, Import, which episode a video
+// is, and Try again.
 
 func (sv *Server) uiNeedsRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /ui/import/search", sv.uiSearch)
 	mux.HandleFunc("GET /ui/import/details", sv.uiDetails)
 	mux.HandleFunc("POST /ui/import/choose", sv.uiChoose)
+	mux.HandleFunc("GET /ui/import/episodes", sv.uiEpisodes)
+	mux.HandleFunc("POST /ui/import/episode", sv.uiEpisode)
 	mux.HandleFunc("POST /ui/import/retry", sv.uiRetry)
 }
 
@@ -89,6 +94,41 @@ func (sv *Server) uiChoose(w http.ResponseWriter, r *http.Request) {
 	sv.renderIncoming(w, "Importing "+name+" as "+title+".", false)
 }
 
+// episodesData is the list a person says which episode a video is from.
+type episodesData struct {
+	Item, Sig string
+	List      episodeList
+	Error     string
+}
+
+func (sv *Server) uiEpisodes(w http.ResponseWriter, r *http.Request) {
+	show, _ := strconv.Atoi(r.FormValue("tmdb"))
+	d := episodesData{Item: r.FormValue("item"), Sig: r.FormValue("sig")}
+	var err error
+	if d.List, err = sv.episodes(d.Item, r.FormValue("video"), show); err != nil {
+		d.Error = "Couldn't list the episodes: " + err.Error() + "."
+	}
+	sv.partial(w, "incoming", "episodes", d)
+}
+
+// uiEpisode is the episode list's File it: the list comes back.
+func (sv *Server) uiEpisode(w http.ResponseWriter, r *http.Request) {
+	show, _ := strconv.Atoi(r.FormValue("tmdb"))
+	se, ep, _ := strings.Cut(r.FormValue("ep"), ":")
+	season, err1 := strconv.Atoi(se)
+	episode, err2 := strconv.Atoi(ep)
+	if err1 != nil || err2 != nil {
+		sv.renderIncoming(w, "Choose an episode first.", true)
+		return
+	}
+	name, err := sv.chooseEpisode(r.FormValue("item"), r.FormValue("sig"), r.FormValue("video"), show, season, episode)
+	if err != nil {
+		sv.renderIncoming(w, "Nothing was filed: "+err.Error()+".", true)
+		return
+	}
+	sv.renderIncoming(w, fmt.Sprintf("Filing %s as S%02dE%02d.", name, season, episode), false)
+}
+
 func (sv *Server) uiRetry(w http.ResponseWriter, r *http.Request) {
 	name, err := sv.retry(r.FormValue("item"))
 	if err != nil {
@@ -103,4 +143,13 @@ func init() {
 	uiFuncs["cands"] = func(l *leftItem, cs []candidate) candsData {
 		return candsData{Item: l.Item, Sig: l.Sig, Candidates: cs}
 	}
+	// needfile is one of a card's videos, with the item it's in.
+	uiFuncs["needfile"] = func(l *leftItem, f leftFile) needFileData {
+		return needFileData{Item: l.Item, Sig: l.Sig, File: f}
+	}
+}
+
+type needFileData struct {
+	Item, Sig string
+	File      leftFile
 }

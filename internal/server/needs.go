@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -27,8 +28,10 @@ import (
 //	GET  /api/import/details         a title, and what importing would file
 //	GET  /api/import/poster/{kind}/{id}  its poster, through the server
 //	POST /api/import/choose          settle an item: {item, sig, kind, tmdb}
+//	GET  /api/import/episodes        a show's episodes, for one of an item's videos
+//	POST /api/import/episode         settle a video: {item, sig, video, tmdb, season, episode}
 //	POST /api/import/retry           try a failed item again
-//	POST /api/import/trash           an item to the trash
+//	POST /api/import/trash           an item (or one of its videos) to the trash
 
 func (sv *Server) needsRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/import", sv.apiLeft)
@@ -36,6 +39,8 @@ func (sv *Server) needsRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/import/details", sv.apiDetails)
 	mux.HandleFunc("GET /api/import/poster/{kind}/{id}", sv.apiPoster)
 	mux.HandleFunc("POST /api/import/choose", sv.apiChoose)
+	mux.HandleFunc("GET /api/import/episodes", sv.apiEpisodes)
+	mux.HandleFunc("POST /api/import/episode", sv.apiEpisode)
 	mux.HandleFunc("POST /api/import/retry", sv.apiRetry)
 	mux.HandleFunc("POST /api/import/trash", sv.apiTrash)
 }
@@ -54,6 +59,15 @@ type leftItem struct {
 	Units      []leftUnit `json:"units"`
 	Unknown    []string   `json:"unknown,omitempty"` // videos it couldn't tell are movies or episodes
 	Unfiled    []string   `json:"unfiled,omitempty"` // videos not filed, when some of the item was
+	Files      []leftFile `json:"files,omitempty"`   // those, and why, and the videos a show's episodes left unnumbered
+}
+
+// leftFile is one video an import left in an item, and why.
+type leftFile struct {
+	Path string `json:"path"` // in the import folder, as the item is named
+	Name string `json:"name"`
+	Why  string `json:"why"`            // "TMDB has no S02E07"
+	Show int    `json:"show,omitempty"` // the show it's in, by TMDB id: choosing an episode of it settles the video
 }
 
 // leftUnit is one movie or show in it.
@@ -120,6 +134,7 @@ func (sv *Server) leftItemOf(it scannedItem, r library.ItemResult, fails int) le
 	for _, v := range r.Unfiled {
 		l.Unfiled = append(l.Unfiled, sv.importRel(v))
 	}
+	l.Files = sv.leftFiles(r)
 	// One hint, one answer: it settles a TV item (its episodes become one
 	// show) or one movie. So an item whose question is the only thing in
 	// it, or that holds only videos the import couldn't place.
@@ -131,6 +146,33 @@ func (sv *Server) leftItemOf(it scannedItem, r library.ItemResult, fails int) le
 	}
 	l.Why = whyLeft(r, l, fails)
 	return l
+}
+
+// leftFiles is each video an import left in an item that filed some of
+// it, with why. When the item is one show that TMDB has, the videos it
+// couldn't number are episodes of it too, and a person can say which.
+func (sv *Server) leftFiles(r library.ItemResult) []leftFile {
+	show := 0
+	if len(r.Units) == 1 && r.Units[0].Kind == "tv" && r.Units[0].TMDB != 0 && r.Problem == "" {
+		show = r.Units[0].TMDB
+	}
+	var out []leftFile
+	add := func(v, why string) {
+		out = append(out, leftFile{Path: sv.importRel(v), Name: filepath.Base(v), Why: why, Show: show})
+	}
+	for _, v := range r.Unfiled {
+		why := r.Why[v]
+		if why == "" {
+			why = "Not filed"
+		}
+		add(v, capitalize(why))
+	}
+	if show != 0 {
+		for _, v := range r.Unknown {
+			add(v, "Couldn't tell which episode this is")
+		}
+	}
+	return out
 }
 
 // whyLeft is what's wrong, in words.
@@ -165,8 +207,11 @@ func whyLeft(r library.ItemResult, l leftItem, fails int) string {
 			whys = append(whys, fmt.Sprintf("%d of %s's episodes are already in the library.", u.Duplicates, u.Title))
 		}
 	}
-	if len(r.Unfiled) > 0 {
-		whys = append(whys, fmt.Sprintf("%d of its videos weren't filed.", len(r.Unfiled)))
+	switch n := len(r.Unfiled); {
+	case n > 0 && len(l.Files) > 0 && l.Files[0].Show != 0:
+		whys = append(whys, fmt.Sprintf("%d of its videos weren't filed: say which episode each is, or leave it out.", n))
+	case n > 0:
+		whys = append(whys, fmt.Sprintf("%d of its videos weren't filed.", n))
 	}
 	if len(r.Unknown) > 0 {
 		whys = append(whys, fmt.Sprintf("Couldn't tell what %d of its videos are.", len(r.Unknown)))
@@ -473,6 +518,115 @@ func (sv *Server) writeAnswer(rel, sig, kind string, id int) (string, error) {
 	return it.Name, nil
 }
 
+// itemVideo is one of an item's videos, by the path the page names it by.
+func (sv *Server) itemVideo(it scannedItem, video string) (string, error) {
+	p := filepath.Join(sv.cfg.ImportDir, filepath.FromSlash(video))
+	if video == "" || !library.Within(it.Path, p) && filepath.Clean(p) != filepath.Clean(it.Path) || !library.IsVideoName(p) {
+		return "", errors.New("that video isn't in it")
+	}
+	return p, nil
+}
+
+// episodeChoice is an episode a video might be.
+type episodeChoice struct {
+	Season  int    `json:"season"`
+	Episode int    `json:"episode"`
+	Code    string `json:"code"` // "S00E01"
+	Name    string `json:"name"`
+	AirDate string `json:"air_date,omitempty"`
+}
+
+type seasonChoices struct {
+	Season   int             `json:"season"`
+	Name     string          `json:"name"` // "Specials", "Series 2"
+	Episodes []episodeChoice `json:"episodes"`
+}
+
+// episodeList is what a person chooses from to say which episode a video
+// is: the show's episodes, specials first, and those whose names come
+// closest to the title in the video's name.
+type episodeList struct {
+	Show      int             `json:"show"`
+	Title     string          `json:"title"`
+	Video     string          `json:"video"`
+	Suggested []episodeChoice `json:"suggested"`
+	Seasons   []seasonChoices `json:"seasons"`
+}
+
+func choiceOf(e tmdb.Episode) episodeChoice {
+	return episodeChoice{Season: e.SeasonNumber, Episode: e.EpisodeNumber, Name: e.Name, AirDate: e.AirDate,
+		Code: fmt.Sprintf("S%02dE%02d", e.SeasonNumber, e.EpisodeNumber)}
+}
+
+// episodes looks a show's seasons up on TMDB (each one cached, as an
+// import would), for one of an item's videos.
+func (sv *Server) episodes(rel, video string, show int) (episodeList, error) {
+	it, err := sv.current(rel, "")
+	if err != nil {
+		return episodeList{}, err
+	}
+	v, err := sv.itemVideo(it, video)
+	if err != nil {
+		return episodeList{}, err
+	}
+	if show <= 0 {
+		return episodeList{}, errors.New("which show? (a TMDB id)")
+	}
+	tm := sv.tmdbClient()
+	tv, err := tm.TV(show)
+	if err != nil {
+		return episodeList{}, err
+	}
+	l := episodeList{Show: show, Title: library.TitleYear(tv.Name, tv.Year()), Video: video,
+		Suggested: []episodeChoice{}, Seasons: []seasonChoices{}}
+	var seasons []*tmdb.Season
+	for _, s := range tv.Seasons {
+		se, err := tm.Season(show, s.SeasonNumber)
+		if err != nil || se == nil {
+			continue
+		}
+		seasons = append(seasons, se)
+		c := seasonChoices{Season: s.SeasonNumber, Name: s.Name, Episodes: []episodeChoice{}}
+		for _, e := range se.Episodes {
+			c.Episodes = append(c.Episodes, choiceOf(e))
+		}
+		l.Seasons = append(l.Seasons, c)
+	}
+	sort.SliceStable(l.Seasons, func(i, j int) bool { // specials first: the likeliest home for what's left
+		return l.Seasons[i].Season == 0 && l.Seasons[j].Season != 0
+	})
+	for _, e := range library.SuggestEpisodes(seasons, v, 3) {
+		l.Suggested = append(l.Suggested, choiceOf(e))
+	}
+	return l, nil
+}
+
+// chooseEpisode settles one of an item's videos: the item's .mvd hint
+// says which episode it is, for the next import, started now. As with
+// choose, only if the item is as it was shown and no import is running.
+func (sv *Server) chooseEpisode(rel, sig, video string, show, season, episode int) (string, error) {
+	name, err := func() (string, error) {
+		release, err := sv.lockImports()
+		if err != nil {
+			return "", err
+		}
+		defer release()
+		it, err := sv.current(rel, sig)
+		if err != nil {
+			return "", err
+		}
+		v, err := sv.itemVideo(it, video)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Base(v), library.WriteEpisodeHint(it.Path, v, show, season, episode)
+	}()
+	if err == nil {
+		sv.importSoon()
+	}
+	return name, err
+}
+
 // importSoon has the next import happen now: auto-import's, if it's on
 // (a hint written changes the folder), or one of its own if not.
 func (sv *Server) importSoon() {
@@ -499,25 +653,39 @@ func (sv *Server) retry(rel string) (string, error) {
 	return it.Name, nil
 }
 
-// trashItem moves an item in the import folder to the trash: not while an
-// import is running, which might be filing it.
-func (sv *Server) trashItem(rel string) (name string, deleted bool, err error) {
+// trashItem moves an item in the import folder to the trash, or with
+// video, just that one of its videos: not while an import is running,
+// which might be filing it.
+func (sv *Server) trashItem(rel, video string) (name string, deleted bool, err error) {
 	it, ok := sv.importItem(rel)
 	if !ok {
 		return "", false, errGone
+	}
+	path, name := it.Path, it.Name
+	if video != "" {
+		if path, err = sv.itemVideo(it, video); err != nil {
+			return "", false, err
+		}
+		name = filepath.Base(path)
 	}
 	release, err := sv.lockImports()
 	if err != nil {
 		return "", false, err
 	}
-	grew, deleted, err := library.TrashItem(sv.cfg, it.Path)
+	grew, deleted, err := library.TrashItem(sv.cfg, path)
+	if err == nil && path != it.Path && !hasVideos(it.Path) {
+		// The last of it: what's left is what an import would have
+		// cleared away once it had filed the rest (its hint, .nfo files).
+		g, _, e := library.TrashItem(sv.cfg, it.Path)
+		grew, err = grew+g, e
+	}
 	release()
 	if err != nil {
 		return "", false, err
 	}
 	sv.imports.trashed(grew, true)
 	sv.kickAutoImport() // the folder's changed: what the page says about it should too
-	return it.Name, deleted, nil
+	return name, deleted, nil
 }
 
 // trashedText is what the website says once an item's gone: moved, or
@@ -603,15 +771,15 @@ func (sv *Server) apiPoster(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, body)
 }
 
+// answerBody is an answer: an item (and which of its videos), and what it is.
+type answerBody struct {
+	Item, Sig, Kind, Video string
+	TMDB, Season, Episode  int
+}
+
 // answer reads an answer's JSON body.
-func answer(r *http.Request) (struct {
-	Item, Sig, Kind string
-	TMDB            int
-}, error) {
-	var b struct {
-		Item, Sig, Kind string
-		TMDB            int
-	}
+func answer(r *http.Request) (answerBody, error) {
+	var b answerBody
 	err := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 16<<10)).Decode(&b)
 	if err != nil {
 		err = errors.New("bad JSON")
@@ -623,6 +791,28 @@ func (sv *Server) apiChoose(w http.ResponseWriter, r *http.Request) {
 	b, err := answer(r)
 	if err == nil {
 		_, err = sv.choose(b.Item, b.Sig, b.Kind, b.TMDB)
+	}
+	if err != nil {
+		apiError(w, answerCode(err), err)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func (sv *Server) apiEpisodes(w http.ResponseWriter, r *http.Request) {
+	show, _ := strconv.Atoi(r.FormValue("tmdb"))
+	l, err := sv.episodes(r.FormValue("item"), r.FormValue("video"), show)
+	if err != nil {
+		apiError(w, answerCode(err), err)
+		return
+	}
+	writeJSON(w, l)
+}
+
+func (sv *Server) apiEpisode(w http.ResponseWriter, r *http.Request) {
+	b, err := answer(r)
+	if err == nil {
+		_, err = sv.chooseEpisode(b.Item, b.Sig, b.Video, b.TMDB, b.Season, b.Episode)
 	}
 	if err != nil {
 		apiError(w, answerCode(err), err)
@@ -646,11 +836,17 @@ func (sv *Server) apiRetry(w http.ResponseWriter, r *http.Request) {
 func (sv *Server) apiTrash(w http.ResponseWriter, r *http.Request) {
 	b, err := answer(r)
 	if err == nil {
-		_, _, err = sv.trashItem(b.Item)
+		_, _, err = sv.trashItem(b.Item, b.Video)
 	}
 	if err != nil {
 		apiError(w, answerCode(err), err)
 		return
 	}
 	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// hasVideos says whether anything in an item is still to be filed.
+func hasVideos(item string) bool {
+	sum, err := library.PlanItem(item, "")
+	return err == nil && sum.Movies+sum.Episodes+sum.Unknown > 0
 }

@@ -1173,6 +1173,13 @@ form.inline { display: contents; }
 .need-actions:empty { display: none; }
 .need-note { margin: 8px 0 0; font-size: 0.9rem; color: var(--dim); }
 .need-files { margin: 8px 0 0; padding-left: 18px; font-size: 0.85rem; color: var(--dim); overflow-wrap: anywhere; }
+.need-file { margin-top: 6px; }
+.need-file-name { color: var(--paper); }
+.need-file-why { display: block; }
+.need-file-acts { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 2px; }
+.need-pick:empty { display: none; }
+.need-ep { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px; }
+.need-ep select { flex: 1 1 16em; min-width: 0; font: inherit; font-size: 0.9rem; }
 
 /* A card's titles: each opens the dialog; the arrow is its TMDB page. */
 .cands { list-style: none; margin: 10px 0 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); }

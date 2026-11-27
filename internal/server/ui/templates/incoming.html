@@ -171,7 +171,8 @@ transmission = "http://127.0.0.1:9091/transmission/rpc"</pre>
         <p class="need-note">One answer can't settle all of this: run <code>mvd import</code> at a terminal to choose,
           or split it into separate items.</p>
       {{end}}
-      {{with .Unfiled}}<ul class="need-files">{{range .}}<li>{{.}}</li>{{end}}</ul>{{end}}
+      {{if .Files}}<ul class="need-files">{{range .Files}}{{template "needfile" (needfile $.Left .)}}{{end}}</ul>
+      {{- else if .Unfiled}}<ul class="need-files">{{range .Unfiled}}<li>{{.}}</li>{{end}}</ul>{{end}}
     {{end}}
   </div>
   <div class="need-actions">
@@ -206,6 +207,37 @@ transmission = "http://127.0.0.1:9091/transmission/rpc"</pre>
 {{- end}}{{end}}
 
 {{/* A search's answer, in place of a card's titles. */}}
+{{/* One video an import left: why, and (in a show TMDB has) a way to say
+   which episode it is, which opens the episode list under it. */}}
+{{define "needfile"}}<li class="need-file">
+  <span class="need-file-name">{{.File.Name}}</span>
+  <span class="need-file-why">{{.File.Why}}.</span>
+  <span class="need-file-acts">
+    {{- if .File.Show}}<form class="inline" hx-get="/ui/import/episodes" hx-target="next .need-pick" hx-swap="innerHTML">
+      <input type="hidden" name="item" value="{{.Item}}"><input type="hidden" name="sig" value="{{.Sig}}">
+      <input type="hidden" name="video" value="{{.File.Path}}"><input type="hidden" name="tmdb" value="{{.File.Show}}">
+      <button class="link-btn" type="submit">Which episode?</button></form>{{end}}
+    <form class="inline" hx-post="/ui/incoming/trash" hx-target="#incoming" hx-swap="outerHTML"
+      hx-confirm="Move {{.File.Name}} to the trash?"><input type="hidden" name="item" value="{{.Item}}">
+      <input type="hidden" name="video" value="{{.File.Path}}"><button class="link-btn" type="submit">Leave it out</button></form>
+  </span>
+  <div class="need-pick"></div>
+</li>{{end}}
+
+{{/* Which episode a video is: the closest by title first, then every
+   season, specials first. */}}
+{{define "episodes"}}{{if .Error}}<p class="cand-err" role="alert">{{.Error}}</p>{{else}}
+<form class="need-ep" hx-post="/ui/import/episode" hx-target="#incoming" hx-swap="outerHTML" hx-disabled-elt="find button">
+  <input type="hidden" name="item" value="{{.Item}}"><input type="hidden" name="sig" value="{{.Sig}}">
+  <input type="hidden" name="video" value="{{.List.Video}}"><input type="hidden" name="tmdb" value="{{.List.Show}}">
+  <select name="ep" required aria-label="Which episode of {{.List.Title}} this is">
+    {{if not .List.Suggested}}<option value="">Choose an episode of {{.List.Title}}</option>{{end}}
+    {{with .List.Suggested}}<optgroup label="Closest by title">{{range .}}<option value="{{.Season}}:{{.Episode}}">{{.Code}} · {{.Name}}</option>{{end}}</optgroup>{{end}}
+    {{range .List.Seasons}}<optgroup label="{{.Name}}">{{range .Episodes}}<option value="{{.Season}}:{{.Episode}}">{{.Code}} · {{.Name}}</option>{{end}}</optgroup>{{end}}
+  </select>
+  <button class="btn small" type="submit">File it</button>
+</form>{{end}}{{end}}
+
 {{define "cands"}}{{if .Error}}<li class="cand-err" role="alert">{{.Error}}</li>{{else}}{{template "candlist" .}}{{end}}{{end}}
 
 {{/* The dialog that confirms a title: the poster, the facts, the plot,

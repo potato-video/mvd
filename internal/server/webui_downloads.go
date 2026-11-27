@@ -136,7 +136,7 @@ func (sv *Server) uiTrashDownload(w http.ResponseWriter, r *http.Request) {
 		sv.renderIncoming(w, "Removed "+t.Name+" from Transmission; its files stay where they are, outside the import folder.", false)
 		return
 	}
-	_, deleted, err := sv.trashItem(sv.importRel(path))
+	_, deleted, err := sv.trashItem(sv.importRel(path), "")
 	if err != nil {
 		sv.renderIncoming(w, "Removed "+t.Name+" from Transmission, but couldn't move it to the trash: "+err.Error(), true)
 		return

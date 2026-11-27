@@ -150,3 +150,46 @@ var extrasDirs = map[string]bool{
 func isExtrasDir(name string) bool {
 	return extrasDirs[strings.ToLower(strings.TrimSpace(cleanRunes(name)))]
 }
+
+// episodeTitle reads the episode's own title from a file name: what follows
+// its number, up to the first release tag ("Show.S02E07.The.Ghost.of.
+// Christmas.720p.WEB-DL" has "The Ghost of Christmas"). "" if there's none.
+func episodeTitle(name string) string {
+	s := cleanRunes(name)
+	if isVideoExt(s) {
+		s = strings.TrimSuffix(s, filepath.Ext(s))
+	}
+	end := -1
+	for _, re := range []*regexp.Regexp{reSE, reX, reSeasonEp} {
+		if m := re.FindStringIndex(s); m != nil {
+			end = m[1]
+			break
+		}
+	}
+	if end < 0 {
+		if m := reLeadNum.FindStringIndex(s); m != nil {
+			end = m[1]
+		}
+	}
+	if end < 0 {
+		return ""
+	}
+	toks := strings.FieldsFunc(s[end:], func(r rune) bool { return r == ' ' || r == '.' || r == '_' })
+	// More episode numbers first ("E02", "-E03", "-03"), and dashes.
+	for len(toks) > 0 && (toks[0] == "-" || moreEpTok.MatchString(toks[0])) {
+		toks = toks[1:]
+	}
+	var title []string
+	for _, t := range toks {
+		if isJunk(t) || strings.HasPrefix(t, "[") || strings.HasPrefix(t, "(") {
+			break
+		}
+		title = append(title, t)
+	}
+	for len(title) > 0 && title[len(title)-1] == "-" {
+		title = title[:len(title)-1]
+	}
+	return strings.Join(title, " ")
+}
+
+var moreEpTok = regexp.MustCompile(`(?i)^-?(?:e\d{1,3})+$|^-\d{1,3}$`)

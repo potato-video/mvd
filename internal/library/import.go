@@ -399,6 +399,9 @@ func (s *Importer) Identify(path, kind string) *Plan {
 			sh.order = h.order
 		}
 	}
+	if len(h.episodes) > 0 && h.tmdb != 0 && kind == "tv" {
+		answerEpisodes(p, h, path, isDir)
+	}
 	pl.videos, pl.unknown, pl.extras = p.videos, p.unknown, p.tvExtras
 
 	for _, f := range p.movies {
@@ -678,6 +681,12 @@ func (s *Importer) importShow(r *ItemResult, pu *planUnit) string {
 	var n epCount
 	changed, err := s.applyShow(s.cfg.TVDir, sh, tv, libDir != "", ord, &n)
 	u.Episodes, u.Duplicates, u.changed = n.filed, n.dups, changed
+	for p, why := range n.left {
+		if r.Why == nil {
+			r.Why = map[string]string{}
+		}
+		r.Why[p] = why
+	}
 	if err != nil {
 		s.unitFailed(r, u, err)
 		return ""
@@ -986,4 +995,32 @@ func treeSize(p string) int64 {
 		return nil
 	})
 	return n
+}
+
+// answerEpisodes puts the hint's episode answers on the videos they name,
+// numbered or not: they're all the hint's show by now.
+func answerEpisodes(p *itemPlan, h hint, item string, isDir bool) {
+	answer := func(v string) ([2]int, bool) {
+		rel, ok := hintRel(item, isDir, v)
+		e, found := h.episodes[rel]
+		return e, ok && found
+	}
+	if len(p.shows) == 0 {
+		p.shows = []*showJob{{label: filepath.Base(item), tmdb: h.tmdb, order: h.order}}
+	}
+	sh := p.shows[0]
+	for _, f := range sh.eps {
+		if e, ok := answer(f.path); ok {
+			f.season, f.eps = e[0], []int{e[1]}
+		}
+	}
+	var unknown []string
+	for _, v := range p.unknown {
+		if e, ok := answer(v); ok {
+			sh.eps = append(sh.eps, &epFile{v, e[0], []int{e[1]}})
+		} else {
+			unknown = append(unknown, v)
+		}
+	}
+	p.unknown = unknown
 }

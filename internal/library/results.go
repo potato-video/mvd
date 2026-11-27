@@ -63,9 +63,10 @@ type ItemResult struct {
 	Problem Problem
 	Detail  string
 	Units   []UnitResult
-	Unknown []string // videos it couldn't tell are movies or episodes
-	Unfiled []string // videos not filed, in an item left with some filed
-	Trashed bool     // its leftovers went to the trash
+	Unknown []string          // videos it couldn't tell are movies or episodes
+	Unfiled []string          // videos not filed, in an item left with some filed
+	Why     map[string]string // why a video in a matched show wasn't filed, by its path: "TMDB has no S02E07"
+	Trashed bool              // its leftovers went to the trash
 }
 
 // importStats counts up an import's results.

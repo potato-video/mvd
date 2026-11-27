@@ -87,7 +87,7 @@ func (sv *Server) uiCancelUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (sv *Server) uiTrashItem(w http.ResponseWriter, r *http.Request) {
-	name, deleted, err := sv.trashItem(r.FormValue("item"))
+	name, deleted, err := sv.trashItem(r.FormValue("item"), r.FormValue("video"))
 	if err != nil {
 		sv.renderIncoming(w, "Couldn't move it to the trash: "+err.Error(), true)
 		return

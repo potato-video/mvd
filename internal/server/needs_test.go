@@ -3,8 +3,11 @@
 package server
 
 import (
+	"fmt"
 	"io"
+	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -161,5 +164,68 @@ func TestNeedsKinds(t *testing.T) {
 	testutil.MustNotExist(t, l.Import, "Notes")
 	if code, _ := ts.post("/api/import/trash", `{"item": "Notes"}`); code != 404 {
 		t.Errorf("trash twice: %d", code)
+	}
+}
+
+// A show's videos the import left: each with why, the episodes to say
+// which one it is from, an answer that files it, and one left out.
+func TestNeedsEpisodes(t *testing.T) {
+	ts, l := newImportServer(t)
+	item := "Ghosts.2019.S02.720p.WEB-DL"
+	ts.uploadFile(item + "/Ghosts.2019.S02E01.The.Grey.Lady.720p.WEB-DL.mkv")
+	ts.uploadFile(item + "/Ghosts.2019.S02E04.Bloopers.720p.WEB-DL.mkv") // two specials it might be
+	ts.uploadFile(item + "/Ghosts.2019.S02E05.720p.WEB-DL.mkv")          // no title
+	ts.sv.ups.mu.Lock()
+	ts.sv.ups.finished[filepath.Join(l.Import, item)] = time.Now() // a folder upload, all in
+	ts.sv.ups.mu.Unlock()
+	if _, err := ts.sv.runImport(); err != nil {
+		t.Fatal(err)
+	}
+	testutil.MustExist(t, l.TV, "Ghosts (2019)/Season 02/Ghosts (2019) - S02E01 - The Grey Lady.mkv")
+	left := ts.leftNow()
+	if len(left) != 1 || len(left[0].Files) != 2 {
+		t.Fatalf("left: %+v", left)
+	}
+	d := left[0]
+	bloopers, untitled := d.Files[0], d.Files[1]
+	if bloopers.Path != item+"/Ghosts.2019.S02E04.Bloopers.720p.WEB-DL.mkv" || bloopers.Why != "TMDB has no S02E04" ||
+		bloopers.Show != 17174 || !strings.Contains(d.Why, "say which episode each is") {
+		t.Fatalf("files: %+v (%s)", d.Files, d.Why)
+	}
+
+	var eps episodeList
+	ts.json("GET", "/api/import/episodes?item="+url.QueryEscape(d.Item)+"&video="+url.QueryEscape(bloopers.Path)+"&tmdb=17174", "", &eps)
+	if eps.Title != "Ghosts (2019)" || len(eps.Seasons) != 3 || eps.Seasons[0].Season != 0 ||
+		len(eps.Seasons[0].Episodes) != 4 || len(eps.Suggested) != 2 || eps.Suggested[0].Code != "S00E03" {
+		t.Errorf("episodes: %+v", eps)
+	}
+	if r := ts.do("GET", "/api/import/episodes?item="+url.QueryEscape(d.Item)+"&video=../x.mkv&tmdb=17174", "", nil); r.StatusCode != 400 {
+		t.Errorf("a video outside the item: %d", r.StatusCode)
+	}
+
+	body := fmt.Sprintf(`{"item": %q, "sig": %q, "video": %q, "tmdb": 17174, "season": 0, "episode": 4}`, d.Item, d.Sig, bloopers.Path)
+	if code, b := ts.post("/api/import/episode", body); code != 200 {
+		t.Fatalf("episode: %d %s", code, b)
+	}
+	want := "Ghosts (2019)/Season 00/Ghosts (2019) - S00E04 - Series 2 Bloopers.mkv"
+	for i := 0; i < 100 && !library.Exists(filepath.Join(l.TV, want)); i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	importMu.Lock() // that import is done
+	importMu.Unlock()
+	testutil.MustExist(t, l.TV, want)
+
+	// Left out: the last of it goes, and the item with it.
+	if code, b := ts.post("/api/import/trash", fmt.Sprintf(`{"item": %q, "video": %q}`, d.Item, untitled.Path)); code != 200 {
+		t.Fatalf("trash: %d %s", code, b)
+	}
+	for i := 0; i < 100 && library.Exists(filepath.Join(l.Import, item)); i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	importMu.Lock()
+	importMu.Unlock()
+	testutil.MustNotExist(t, l.Import, item)
+	if left := ts.leftNow(); len(left) != 0 {
+		t.Errorf("still left: %+v", left)
 	}
 }

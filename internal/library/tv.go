@@ -273,7 +273,135 @@ func showFolder(tv *tmdb.TVShow) string {
 }
 
 // epCount is what applyShow did with a show's episodes.
-type epCount struct{ filed, dups int }
+type epCount struct {
+	filed, dups int
+	left        map[string]string // why a file wasn't filed, by its path
+}
+
+func (n *epCount) leave(path, why string) {
+	if n.left == nil {
+		n.left = map[string]string{}
+	}
+	n.left[path] = why
+}
+
+// season is a show's season from TMDB, or nil if it has none by that
+// number: from the order the show's filed in, if not the aired one.
+func (s *filer) season(tv *tmdb.TVShow, ord *showOrder, seasons map[int]*tmdb.Season, n int) (*tmdb.Season, error) {
+	se, seen := seasons[n]
+	if seen || ord != nil {
+		return se, nil
+	}
+	se, err := s.tmdb.Season(tv.ID, n)
+	var fe tmdb.FatalError
+	if errors.As(err, &fe) {
+		return nil, err
+	}
+	seasons[n] = se // nil if TMDB has no such season
+	return se, nil
+}
+
+// Finding a special by its title: how close a match must be, and how far
+// ahead of the next.
+const (
+	specialScore  = 0.85
+	specialMargin = 0.15
+)
+
+// specialByTitle finds the special a file is, by the title in its name,
+// when its number isn't on TMDB: the one season 0 episode whose name
+// matches it closely, with no other close behind. Only for a single
+// episode outside season 0.
+func (s *filer) specialByTitle(tv *tmdb.TVShow, ord *showOrder, seasons map[int]*tmdb.Season, f *epFile, season int) (*tmdb.Episode, error) {
+	title := episodeTitle(filepath.Base(f.path))
+	if season == 0 || len(f.eps) != 1 || title == "" {
+		return nil, nil
+	}
+	se, err := s.season(tv, ord, seasons, 0)
+	if se == nil || err != nil {
+		return nil, err
+	}
+	return bestByTitle(se.Episodes, title), nil
+}
+
+// SuggestEpisodes is a show's episodes whose names come closest to the
+// title in a video's file name, best first, at most n: for a person
+// choosing which episode it is. None when the name has no title in it.
+func SuggestEpisodes(seasons []*tmdb.Season, video string, n int) []tmdb.Episode {
+	title := episodeTitle(filepath.Base(video))
+	if title == "" {
+		return nil
+	}
+	type scored struct {
+		e   tmdb.Episode
+		sim float64
+	}
+	var all []scored
+	for _, se := range seasons {
+		for _, e := range se.Episodes {
+			if sim := TitleSim(title, e.Name); sim >= 0.5 {
+				all = append(all, scored{e, sim})
+			}
+		}
+	}
+	sort.SliceStable(all, func(i, j int) bool { return all[i].sim > all[j].sim })
+	var out []tmdb.Episode
+	for _, x := range all[:min(len(all), n)] {
+		out = append(out, x.e)
+	}
+	return out
+}
+
+// askEpisode asks which episode a video is, when its number won't do and
+// its title didn't settle it: the episode, or nil to leave it, and whether
+// to ask no more.
+func (s *filer) askEpisode(tv *tmdb.TVShow, ord *showOrder, seasons map[int]*tmdb.Season, f *epFile, missing string) (*tmdb.Episode, bool, error) {
+	var all []*tmdb.Season
+	if se, err := s.season(tv, ord, seasons, 0); err != nil {
+		return nil, false, err
+	} else if se != nil {
+		all = append(all, se)
+	}
+	if se, err := s.season(tv, ord, seasons, f.season); err == nil && se != nil && f.season != 0 {
+		all = append(all, se)
+	}
+	name := filepath.Base(f.path)
+	for {
+		a, err := s.ask(Question{Label: name, Kind: "tv", Show: TitleYear(tv.Name, tv.Year()), Video: name,
+			Missing: missing, Episodes: SuggestEpisodes(all, f.path, 5)})
+		if err != nil || a.Quit || a.Episode == 0 {
+			return nil, a.Quit, err
+		}
+		se, err := s.season(tv, ord, seasons, a.Season)
+		if err != nil {
+			return nil, false, err
+		}
+		if se != nil {
+			if e := se.Episode(a.Episode); e != nil {
+				return e, false, nil
+			}
+		}
+		missing = fmt.Sprintf("TMDB has no S%02dE%02d either", a.Season, a.Episode)
+	}
+}
+
+// bestByTitle is the episode a title names, if one stands out.
+func bestByTitle(eps []tmdb.Episode, title string) *tmdb.Episode {
+	var best *tmdb.Episode
+	first, second := 0.0, 0.0
+	for i := range eps {
+		switch sim := TitleSim(title, eps[i].Name); {
+		case sim > first:
+			best, first, second = &eps[i], sim, first
+		case sim > second:
+			second = sim
+		}
+	}
+	if first < specialScore || first-second < specialMargin {
+		return nil
+	}
+	return best
+}
 
 // applyShow brings a show's episodes into line in lib (the TV folder),
 // counting them in n. Says whether anything changed.
@@ -293,7 +421,8 @@ func (s *filer) applyShow(lib string, sh *show, tv *tmdb.TVShow, known bool, ord
 		}
 		regular = ord.regular
 	}
-	inSeason := 0 // files in the -season asked for
+	inSeason := 0        // files in the -season asked for
+	quit := s.ask == nil // nobody to ask which episode a video is, or they've said to stop
 	for _, f := range sh.eps {
 		season := f.season
 		if season < 0 && len(regular) == 1 {
@@ -311,35 +440,56 @@ func (s *filer) applyShow(lib string, sh *show, tv *tmdb.TVShow, known bool, ord
 		name := s.rel(f.path)
 		if season < 0 {
 			notes = append(notes, name+": no season number, left alone")
+			n.leave(f.path, "no season number in its name")
 			continue
 		}
-		se, seen := seasons[season]
-		if !seen && ord == nil {
-			var err error
-			se, err = s.tmdb.Season(tv.ID, season)
-			var fe tmdb.FatalError
-			if errors.As(err, &fe) {
-				return false, err
-			}
-			seasons[season] = se // nil if TMDB has no such season
-		}
-		if se == nil {
-			notes = append(notes, fmt.Sprintf("%s: TMDB has no season %d, left alone", name, season))
-			continue
+		se, err := s.season(tv, ord, seasons, season)
+		if err != nil {
+			return false, err
 		}
 		var eps []*tmdb.Episode
-		for _, n := range f.eps {
-			e := se.Episode(n)
+		missing := ""
+		if se == nil {
+			missing = fmt.Sprintf("TMDB has no season %d", season)
+		}
+		for _, k := range f.eps {
+			if se == nil {
+				break
+			}
+			e := se.Episode(k)
 			if e == nil {
-				notes = append(notes, fmt.Sprintf("%s: TMDB has no S%02dE%02d, left alone", name, season, n))
+				missing = fmt.Sprintf("TMDB has no S%02dE%02d", season, k)
 				eps = nil
 				break
 			}
 			eps = append(eps, e)
 		}
-		if eps != nil {
+		if missing == "" {
 			jobs = append(jobs, epJob{f, season, eps})
+			continue
 		}
+		// Not where its number says: a special numbered as an extra
+		// episode of a season, perhaps, which its title can find.
+		if e, err := s.specialByTitle(tv, ord, seasons, f, season); err != nil {
+			return false, err
+		} else if e != nil {
+			notes = append(notes, fmt.Sprintf("%s: %s, but its title is S00E%02d's", name, missing, e.EpisodeNumber))
+			jobs = append(jobs, epJob{f, 0, []*tmdb.Episode{e}})
+			continue
+		}
+		if !quit {
+			e, q, err := s.askEpisode(tv, ord, seasons, f, missing)
+			if err != nil {
+				return false, err
+			}
+			if e != nil {
+				jobs = append(jobs, epJob{f, e.SeasonNumber, []*tmdb.Episode{e}})
+				continue
+			}
+			quit = q
+		}
+		notes = append(notes, name+": "+missing+", left alone")
+		n.leave(f.path, missing)
 	}
 	if s.opt.Season != nil {
 		if inSeason == 0 {
@@ -427,6 +577,7 @@ func (s *filer) applyShow(lib string, sh *show, tv *tmdb.TVShow, known bool, ord
 			if p := filepath.Join(dir, base+ext); p != src && existsOther(p, src) {
 				s.printf("  = %s is already in the library\n", s.rel(p))
 				n.dups++
+				n.leave(j.file.path, fmt.Sprintf("S%02dE%02d is already in the library", j.season, j.eps[0].EpisodeNumber))
 				continue
 			}
 			srcDir, srcBase := filepath.Dir(src), videoBase(src)

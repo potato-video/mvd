@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"mvd/internal/library"
 	"mvd/internal/testutil"
 )
 
@@ -77,4 +79,51 @@ func TestUIEmptyTrash(t *testing.T) {
 	}
 	testutil.MustNotExist(t, l.Trash, "2026-11-01 120000 Old.Thing")
 	testutil.MustExist(t, l.Trash, "not mvd's.txt")
+}
+
+// A show's left videos on the page: each with why, Which episode? (the
+// list, closest by title first) and Leave it out; File it files it.
+func TestUINeedsEpisodes(t *testing.T) {
+	ts, l := newImportServer(t)
+	item := "Ghosts.2019.S02.720p.WEB-DL"
+	ts.uploadFile(item + "/Ghosts.2019.S02E01.The.Grey.Lady.720p.WEB-DL.mkv")
+	ts.uploadFile(item + "/Ghosts.2019.S02E03.The.Ghost.of.Xmas.720p.WEB-DL.mkv") // close, but not enough to file
+	ts.sv.ups.mu.Lock()
+	ts.sv.ups.finished[filepath.Join(l.Import, item)] = time.Now()
+	ts.sv.ups.mu.Unlock()
+	if _, err := ts.sv.runImport(); err != nil {
+		t.Fatal(err)
+	}
+	left := ts.leftNow()
+	if len(left) != 1 || len(left[0].Files) != 1 {
+		t.Fatalf("left: %+v", left)
+	}
+	sig, video := left[0].Sig, left[0].Files[0].Path
+	h := body(t, ts.do("GET", "/incoming", "", nil))
+	if !inOrder(h, "say which episode each is", "Ghosts.2019.S02E03.The.Ghost.of.Xmas.720p.WEB-DL.mkv", "TMDB has no S02E03.",
+		`hx-get="/ui/import/episodes"`, `name="tmdb" value="17174"`, ">Which episode?</button>",
+		`hx-post="/ui/incoming/trash"`, `name="video" value="`+video+`"`, ">Leave it out</button>") {
+		t.Errorf("card:\n%s", h)
+	}
+
+	q := "item=" + url.QueryEscape(item) + "&sig=" + sig + "&video=" + url.QueryEscape(video) + "&tmdb=17174"
+	h = body(t, ts.do("GET", "/ui/import/episodes?"+q, "", nil))
+	if !inOrder(h, `hx-post="/ui/import/episode"`, `<optgroup label="Closest by title"><option value="0:1">S00E01 · The Ghost of Christmas</option>`,
+		`<optgroup label="Specials">`, `<optgroup label="Season 1">`, ">File it</button>") {
+		t.Errorf("episodes:\n%s", h)
+	}
+
+	form := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
+	h = body(t, ts.do("POST", "/ui/import/episode", q+"&ep=0:1", form))
+	if !strings.Contains(h, "Filing Ghosts.2019.S02E03.The.Ghost.of.Xmas.720p.WEB-DL.mkv as S00E01.") {
+		t.Errorf("File it:\n%s", h)
+	}
+	want := "Ghosts (2019)/Season 00/Ghosts (2019) - S00E01 - The Ghost of Christmas.mkv"
+	for i := 0; i < 100 && !library.Exists(filepath.Join(l.TV, want)); i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	importMu.Lock()
+	importMu.Unlock()
+	testutil.MustExist(t, l.TV, want)
+	testutil.MustNotExist(t, l.Import, item)
 }

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -50,10 +51,11 @@ type extraSub struct {
 }
 
 type hint struct {
-	kind  string // "movie" or "tv"
-	tmdb  int
-	order string
-	path  string
+	kind     string // "movie" or "tv"
+	tmdb     int
+	order    string
+	episodes map[string][2]int // which episode a video is (season, episode), by its path in the item
+	path     string
 }
 
 var (
@@ -515,7 +517,7 @@ func readHint(path string, isDir bool) hint {
 	if err != nil {
 		return hint{}
 	}
-	h := hint{path: p, tmdb: Atoi(kv["tmdb"]), order: kv["order"]}
+	h := hint{path: p, tmdb: Atoi(kv["tmdb"]), order: kv["order"], episodes: readHintEpisodes(p)}
 	switch strings.ToLower(kv["kind"]) {
 	case "movie", "movies":
 		h.kind = "movie"
@@ -523,4 +525,44 @@ func readHint(path string, isDir bool) hint {
 		h.kind = "tv"
 	}
 	return h
+}
+
+var hintEpisodeRe = regexp.MustCompile(`(?i)^s(\d{1,3})e(\d{1,4})$`)
+
+// readHintEpisodes reads a hint's [episodes] table: a video's path in the
+// item, quoted, and the episode it is, "S00E01".
+func readHintEpisodes(p string) map[string][2]int {
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return nil
+	}
+	var eps map[string][2]int
+	in := false
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case line == "" || line[0] == '#':
+			continue
+		case line[0] == '[':
+			in = strings.TrimSpace(strings.Trim(line, "[]")) == "episodes"
+			continue
+		case !in || line[0] != '"':
+			continue
+		}
+		q, err := strconv.QuotedPrefix(line)
+		if err != nil {
+			continue
+		}
+		rel, _ := strconv.Unquote(q)
+		_, v, ok := strings.Cut(line[len(q):], "=")
+		m := hintEpisodeRe.FindStringSubmatch(strings.Trim(strings.TrimSpace(v), `"`))
+		if !ok || m == nil || rel == "" {
+			continue
+		}
+		if eps == nil {
+			eps = map[string][2]int{}
+		}
+		eps[filepath.ToSlash(rel)] = [2]int{Atoi(m[1]), Atoi(m[2])}
+	}
+	return eps
 }

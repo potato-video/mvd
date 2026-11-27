@@ -3,9 +3,12 @@ package library
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 
 	"mvd/internal/tmdb"
@@ -114,7 +117,8 @@ func Lookup(tm *tmdb.Client, kind, ref string) (int, string, error) {
 
 // WriteHint settles what an import item is, for the next import: its .mvd
 // (inside a folder, or "Name.mvd" beside a file) gets the kind and TMDB id,
-// keeping any episode order it already has.
+// keeping any episode order and episode answers it already has for that
+// title.
 func WriteHint(item, kind string, id int) error {
 	st, err := os.Stat(item)
 	if err != nil {
@@ -124,17 +128,76 @@ func WriteHint(item, kind string, id int) error {
 		return fmt.Errorf("kind %q: want movie or tv", kind)
 	}
 	h := readHint(item, st.IsDir())
+	if kind != "tv" {
+		h.order = ""
+	}
+	if kind != "tv" || h.tmdb != id {
+		h.episodes = nil
+	}
+	h.kind, h.tmdb = kind, id
+	return h.write(item, st.IsDir())
+}
+
+// WriteEpisodeHint settles which episode one of an item's videos is, for
+// the next import: the item's hint gets the show and a line for the video.
+// An answer for another show than the hint's starts it over.
+func WriteEpisodeHint(item, video string, show, season, episode int) error {
+	st, err := os.Stat(item)
+	if err != nil {
+		return err
+	}
+	if show <= 0 || season < 0 || episode <= 0 {
+		return fmt.Errorf("which episode? (a show's TMDB id, a season and an episode)")
+	}
+	rel, ok := hintRel(item, st.IsDir(), video)
+	if !ok {
+		return fmt.Errorf("%s isn't in %s", video, filepath.Base(item))
+	}
+	h := readHint(item, st.IsDir())
+	if h.kind != "tv" || h.tmdb != show {
+		h.order, h.episodes = "", nil
+	}
+	h.kind, h.tmdb = "tv", show
+	if h.episodes == nil {
+		h.episodes = map[string][2]int{}
+	}
+	h.episodes[rel] = [2]int{season, episode}
+	return h.write(item, st.IsDir())
+}
+
+// hintRel is how a hint names a video in its item: its path inside the
+// item's folder, or a lone file's name.
+func hintRel(item string, isDir bool, video string) (string, bool) {
+	if !isDir {
+		return filepath.Base(item), filepath.Clean(video) == filepath.Clean(item)
+	}
+	rel, err := filepath.Rel(item, video)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return "", false
+	}
+	return filepath.ToSlash(rel), true
+}
+
+// write puts the hint in the item's .mvd.
+func (h hint) write(item string, isDir bool) error {
 	p := h.path
 	if p == "" {
 		p = filepath.Join(item, ".mvd")
-		if !st.IsDir() {
+		if !isDir {
 			p = strings.TrimSuffix(item, filepath.Ext(item)) + ".mvd"
 		}
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "kind = %q\ntmdb = %d\n", kind, id)
-	if h.order != "" && kind == "tv" {
+	fmt.Fprintf(&b, "kind = %q\ntmdb = %d\n", h.kind, h.tmdb)
+	if h.order != "" {
 		fmt.Fprintf(&b, "order = %q\n", h.order)
+	}
+	if len(h.episodes) > 0 {
+		b.WriteString("\n# which episode each of these is\n[episodes]\n")
+		for _, rel := range slices.Sorted(maps.Keys(h.episodes)) {
+			e := h.episodes[rel]
+			fmt.Fprintf(&b, "%s = \"S%02dE%02d\"\n", strconv.Quote(rel), e[0], e[1])
+		}
 	}
 	return os.WriteFile(p, []byte(b.String()), 0o644)
 }

@@ -562,6 +562,83 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /api/import/episodes:
+    get:
+      tags: [needs]
+      summary: A show's episodes, for saying which one a video is
+      description: |
+        For one of `files` in a left item whose `show` is set: the show's
+        seasons from TMDB (through the server, and cached), specials
+        first, and the episodes whose names come closest to the title in
+        the video's file name.
+      operationId: listEpisodes
+      parameters:
+        - { name: item, in: query, required: true, schema: { type: string }, description: "The item's path in the import folder" }
+        - { name: video, in: query, required: true, schema: { type: string }, description: "The video's `path`, from `files`" }
+        - { name: tmdb, in: query, required: true, schema: { type: integer }, description: "The show, `show` from `files`" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EpisodeList" }
+        "404":
+          description: The item isn't in the import folder (any more)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "400":
+          description: The video isn't in the item, no such show, or TMDB failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/import/episode:
+    post:
+      tags: [needs]
+      summary: Settle which episode one of an item's videos is, for the next import
+      description: |
+        Adds the video to the item's `.mvd` hint (its `[episodes]` table,
+        and the show's kind and TMDB id) and starts an import, which files
+        it. An answer for another show than the hint's starts the hint
+        over. Only if the item is as `sig` says, as with choose.
+      operationId: chooseEpisode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [item, sig, video, tmdb, season, episode]
+              properties:
+                item: { type: string }
+                sig: { type: string }
+                video: { type: string, description: "The video's `path`, from `files`" }
+                tmdb: { type: integer, description: "The show" }
+                season: { type: integer, minimum: 0, description: "0 for specials" }
+                episode: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Written; an import is on its way
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OK" }
+        "404":
+          description: The item isn't in the import folder any more
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: The item has changed since, or an import is running
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "400":
+          description: The video isn't in the item, no episode given, or the hint couldn't be written
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/import/retry:
     post:
       tags: [needs]
@@ -592,10 +669,12 @@ paths:
   /api/import/trash:
     post:
       tags: [needs]
-      summary: Move an item in the import folder to the trash
+      summary: Move an item in the import folder, or one of its videos, to the trash
       description: |
         Into mvd's trash, where it stays until `trash_max_age` (deleted at
-        once if the trash is off). Not while an import is running.
+        once if the trash is off). Not while an import is running. With
+        `video`, only that video goes, and an import follows, which tidies
+        the item away if that leaves nothing to file.
       operationId: trashItem
       requestBody:
         required: true
@@ -606,6 +685,7 @@ paths:
               required: [item]
               properties:
                 item: { type: string }
+                video: { type: string, description: "One of its videos, a `path` from `files`" }
       responses:
         "200":
           description: Moved
@@ -1732,6 +1812,54 @@ components:
           type: array
           items: { type: string }
           description: Videos not filed, when some of the item was
+        files:
+          description: |
+            Those videos, each with why, and, when the item is one show TMDB
+            has, the videos it couldn't number too. With `show`, choosing
+            an episode (`POST /api/import/episode`) settles the video.
+          type: array
+          items:
+            type: object
+            required: [path, name, why]
+            properties:
+              path: { type: string, description: "In the import folder, as answers name it" }
+              name: { type: string }
+              why: { type: string, description: "\"TMDB has no S02E07\", \"S01E01 is already in the library\"" }
+              show: { type: integer, description: "The show's TMDB id, when choosing an episode can settle it" }
+
+    EpisodeList:
+      type: object
+      required: [show, title, video, suggested, seasons]
+      properties:
+        show: { type: integer }
+        title: { type: string, description: "\"Ghosts (2019)\"" }
+        video: { type: string }
+        suggested:
+          description: The episodes whose names come closest to the title in the video's name, best first (at most three)
+          type: array
+          items: { $ref: "#/components/schemas/EpisodeChoice" }
+        seasons:
+          description: Specials first
+          type: array
+          items:
+            type: object
+            required: [season, name, episodes]
+            properties:
+              season: { type: integer }
+              name: { type: string }
+              episodes:
+                type: array
+                items: { $ref: "#/components/schemas/EpisodeChoice" }
+
+    EpisodeChoice:
+      type: object
+      required: [season, episode, code, name]
+      properties:
+        season: { type: integer }
+        episode: { type: integer }
+        code: { type: string, description: "\"S00E01\"" }
+        name: { type: string }
+        air_date: { type: string }
 
     Candidate:
       type: object

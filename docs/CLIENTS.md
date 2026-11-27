@@ -163,9 +163,15 @@ what mvd put in the trash is deleted.
     (1984)") to search TMDB, or a TMDB or IMDb id or link, which opens the
     dialog for that title straight away. When the import couldn't tell
     whether it's a movie or TV, the card asks first.
+  - **Videos that weren't filed** from a show are listed, each with why:
+    "TMDB has no S02E07" (the import looks among the show's specials by
+    the episode's title first, and files it there when one matches
+    clearly), "S01E01 is already in the library", or that it couldn't tell
+    which episode it is. **Which episode?** lists the show's episodes, the
+    closest by title first, then specials and each season; **File it**
+    files it as that one. **Leave it out** moves that video to the trash.
   - **Other problems** say what's wrong: already in the library, no videos
-    in it, archives mvd can't unpack, videos that weren't filed. **🗑**
-    moves it to the trash. Something that failed three imports in a row
+    in it, archives mvd can't unpack. **🗑** moves it to the trash. Something that failed three imports in a row
     (a file it couldn't move, say) has **Try again**.
   - An item with more than one movie, or movies and episodes mixed, can't
     be settled by one answer: run `mvd import` at a terminal, or split it.

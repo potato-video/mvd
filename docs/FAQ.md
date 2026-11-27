@@ -36,8 +36,11 @@ The Apple TV, iPhone and iPad app plays everything through VLC.
 
 Run `mvd import` at a terminal to see why, and answer its questions. Or add
 a `.mvd` hint file (see [`mvd import`](COMMANDS.md#mvd-import)). Common causes: the
-file is still arriving (wait a minute), it's already in the library, or it's
-TV without episode numbers in its name (put it in `import/tv/`).
+file is still arriving (wait a minute), it's already in the library, it's
+TV without episode numbers in its name (put it in `import/tv/`), or TMDB
+numbers the episode differently (a special released as the last episode of
+a season: say which episode it is in Needs you, or in the hint's
+`[episodes]`).
 
 ## An archive wasn't unpacked
 

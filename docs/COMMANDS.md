@@ -42,7 +42,19 @@ episodes join their show's existing folder.
   kind  = "tv"      # or "movie"
   tmdb  = 95396     # the TMDB id, from the address of its TMDB page
   order = "dvd"     # TV only: the episode order to use
+
+  # TV only: which episode a video is, when its name doesn't say, or says
+  # wrong (its path in the folder, and the episode)
+  [episodes]
+  "S02/Ghosts S02E07 The Ghost of Christmas.mkv" = "S00E01"
   ```
+
+- **An episode TMDB doesn't have** by the number in its name (a Christmas
+  special released as "S02E07", say) is looked for among the show's
+  specials by the title in its name. It's filed as that special only when
+  one, and only one, matches closely. Otherwise it's asked about (which
+  episode it is: the closest by title, or one typed as `S00E01`), and with
+  `-y` it stays in `import/` for an `[episodes]` line in the hint.
 
 - **Folders named `movies/` and `tv/`** inside `import/` force the type of
   what's in them, for things with no episode numbers in their names.

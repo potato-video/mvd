@@ -14,27 +14,34 @@ import (
 // (AskTerminal, at a terminal) or none (-y, and the server), and with none
 // it leaves the question in its results.
 
-// Question asks which TMDB title something is (from Candidates), or, when
-// Groups is set, which of a show's episode orders to use.
+// Question asks which TMDB title something is (from Candidates); when
+// Groups is set, which of a show's episode orders to use; when Video is
+// set, which of a show's episodes a video is (Episodes are the closest by
+// title).
 type Question struct {
 	Label      string
 	Kind       string // "movie" or "tv"
 	Parsed     Parsed
 	Candidates []Candidate
 
-	Show   string // which order: the show's title and year
+	Show   string // which order, or which episode: the show's title and year
 	Groups []tmdb.EpisodeGroupInfo
+
+	Video    string // which episode: the video's name,
+	Missing  string // why its own number won't do ("TMDB has no S02E07"),
+	Episodes []tmdb.Episode
 
 	search func(Parsed) ([]Candidate, error) // a new search, for [e]
 	find   func(imdbID string) (int, error)  // an IMDb id looked up, for [i]
 }
 
-// Answer is a TMDB id (a match) or an episode group's id (an order). With
-// neither, it's a skip.
+// Answer is a TMDB id (a match), an episode group's id (an order), or a
+// season and episode (Episode > 0). With none, it's a skip.
 type Answer struct {
-	TMDB  int
-	Group string
-	Quit  bool
+	TMDB            int
+	Group           string
+	Season, Episode int
+	Quit            bool
 }
 
 // AskFunc answers a question.
@@ -46,6 +53,9 @@ func AskTerminal(in io.Reader, out io.Writer) AskFunc {
 	return func(q Question) (Answer, error) {
 		if q.Groups != nil {
 			return t.askGroup(q), nil
+		}
+		if q.Video != "" {
+			return t.askEpisode(q), nil
 		}
 		return t.askMatch(q)
 	}
@@ -154,6 +164,38 @@ func (t *terminal) askGroup(q Question) Answer {
 		}
 		if n := Atoi(line); n >= 1 && n <= len(q.Groups) {
 			return Answer{Group: q.Groups[n-1].ID}
+		}
+	}
+}
+
+// askEpisode asks which episode a video is: one of the closest by title,
+// or any typed as S00E01.
+func (t *terminal) askEpisode(q Question) Answer {
+	for {
+		t.printf("\n? %s: %s. Which episode of %s is it?\n", q.Video, q.Missing, q.Show)
+		for i, e := range q.Episodes {
+			t.printf("  %d) S%02dE%02d  %s\n", i+1, e.SeasonNumber, e.EpisodeNumber, e.Name)
+		}
+		prompt := "  [S00E01] that episode · [s]kip · [q]uit: leave the rest of this show's"
+		if len(q.Episodes) > 0 {
+			prompt = fmt.Sprintf("  [1-%d] pick · ", len(q.Episodes)) + prompt[2:]
+		}
+		line, err := t.readLine(prompt + " (enter = skip) > ")
+		if err != nil {
+			return Answer{}
+		}
+		switch line = strings.ToLower(line); {
+		case line == "" || line == "s":
+			return Answer{}
+		case line == "q":
+			return Answer{Quit: true}
+		}
+		if m := hintEpisodeRe.FindStringSubmatch(line); m != nil && Atoi(m[2]) > 0 {
+			return Answer{Season: Atoi(m[1]), Episode: Atoi(m[2])}
+		}
+		if n := Atoi(line); n >= 1 && n <= len(q.Episodes) {
+			e := q.Episodes[n-1]
+			return Answer{Season: e.SeasonNumber, Episode: e.EpisodeNumber}
 		}
 	}
 }

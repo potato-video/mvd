@@ -320,7 +320,20 @@ tag was added gets it from `mvd refresh -all`.
   it unpack, which would write into the source.
 - **Archives** are unpacked before the item is read; see below.
 - **Hint files:** `.mvd` (in a folder) or `Name.mvd` (beside a file) settle
-  `kind`, `tmdb` and `order`. A show's own `.mvd` remembers its episode order.
+  `kind`, `tmdb` and `order`, and with an `[episodes]` table (a video's
+  path in the item, quoted, and `"S00E01"`) which episode a video is
+  (`answerEpisodes`, after the hint's `tmdb` has made the item one show;
+  videos it couldn't number join the show that way too). `WriteHint` and
+  `WriteEpisodeHint` keep what's there for the same show and start over
+  for another. A show's own `.mvd` remembers its episode order.
+- **An episode TMDB doesn't have by its number** (`applyShow`): the title in
+  its name (`episodeTitle`: what follows the number, up to the first
+  release tag) is compared with the show's season 0 names
+  (`specialByTitle`), and it's filed as the special that scores at least
+  `specialScore` with no other within `specialMargin`. Season 0 is fetched
+  only when that happens, through the cache. Otherwise it's asked about
+  (`askEpisode`) when there's someone to ask, or left, with why in the
+  result's `Why`, by path, which Needs you shows.
 
 ## Refresh
 
@@ -1387,7 +1400,11 @@ step and no framework.
   import, which files it under its lock: the page never files anything.
   One hint settles one movie or one show, so only an item whose question is
   the only thing in it (or that holds only videos the import couldn't
-  place) can be answered here. An answer names the item and its signature
+  place) can be answered here. Videos left in an item that's one show TMDB
+  has (`files`, each with why) can each be answered too: which episode it
+  is, from the show's seasons (`/api/import/episodes`, fetched only when
+  asked for, and cached), into the hint's `[episodes]`; or left out, to
+  the trash, and the item with it once nothing in it is left to file. An answer names the item and its signature
   (`scanImport`'s), and is refused if the item has gone or changed, or an
   import is running here or at a terminal. Each card is kept across
   refreshes (`hx-preserve`), so a search's results stay; its id includes

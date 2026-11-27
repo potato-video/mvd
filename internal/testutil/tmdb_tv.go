@@ -27,6 +27,12 @@ var fakeShows = []fakeShow{
 	{57243, "Doctor Who", "2005-03-26", "GB", map[int][]string{1: {"Rose", "The End of the World", "The Unquiet Dead"}}},
 	{121, "Doctor Who", "1963-11-23", "GB", map[int][]string{1: {"An Unearthly Child"}}},
 	{1437, "Firefly", "2002-09-20", "US", map[int][]string{0: {"Serenity"}, 1: {"The Train Job", "Bushwhacked", "Our Mrs. Reynolds", "Jaynestown"}}},
+	// Its Christmas specials are in season 0: releases often number them
+	// as an extra episode of the season before.
+	{17174, "Ghosts", "2019-04-15", "GB", map[int][]string{
+		0: {"The Ghost of Christmas", "He Came!", "Series 1 Bloopers", "Series 2 Bloopers"},
+		1: {"Who Do You Think You Are?", "Moonah"},
+		2: {"The Grey Lady", "About Last Night"}}},
 	{2098, "Batman: The Animated Series", "1992-09-05", "US", map[int][]string{
 		1: {"The Cat and the Claw (1)", "On Leather Wings", "Heart of Ice", "Christmas with the Joker"}}},
 }
