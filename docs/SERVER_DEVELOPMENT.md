@@ -553,9 +553,12 @@ and `internal/upload` (the client side, used by `mvd upload`).
 - **Finished uploads are remembered for a week** (`.uploads/done`, by
   fingerprint or group), so sending again is a no-op, not a duplicate.
 - **Clearing up** is `sweepUploads`, at startup and hourly: uploads and
-  folders untouched for a week, finished ones remembered longer, and a
-  `.part` whose record was never written. It holds the start lock, since a
-  start makes the `.part` before its record. Listing uploads only reads:
+  folders untouched for a week, finished ones remembered longer, a
+  `.part` whose record was never written, and a `<group>.d` with no
+  `.group` and nothing of it going. It holds the start lock, since a
+  start makes the `.part` before its record. Cancelling a folder takes the
+  group's lock, so it waits for a file being put by, and a file whose
+  `.part` has gone by then isn't put by. Listing uploads only reads:
   it runs on every poll, `/api/status` included.
 - **`internal/upload`** documents the protocol step by step, for writing a
   client in another language.

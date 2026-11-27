@@ -114,11 +114,15 @@ func (sv *Server) groupCount(g string) int {
 // folder. The path is the folder's in the import folder, once it's there.
 func (sv *Server) finishInGroup(v uploadView) (string, error) {
 	defer sv.ups.lock("group " + v.Group)()
+	part := filepath.Join(sv.uploadDir(), v.ID+".part")
+	if _, err := os.Stat(part); err != nil {
+		return "", err // the folder was cancelled while this waited: nothing to put by
+	}
 	dst := filepath.Join(sv.groupDir(v.Group), filepath.FromSlash(v.Name))
 	if err := os.MkdirAll(filepath.Dir(dst), 0o777); err != nil {
 		return "", err
 	}
-	if err := os.Rename(filepath.Join(sv.uploadDir(), v.ID+".part"), dst); err != nil {
+	if err := os.Rename(part, dst); err != nil {
 		return "", err
 	}
 	os.Remove(filepath.Join(sv.uploadDir(), v.ID+".json"))
@@ -203,7 +207,8 @@ func (sv *Server) addGroups(out []uploadView) []uploadView {
 }
 
 // sweepGroups removes the folders listUploads leaves out: untouched for
-// uploadMaxAge. (Called by sweepUploads, with the start lock held.)
+// uploadMaxAge, or a group's folder with no record and nothing of it
+// still going. (Called by sweepUploads, with the start lock held.)
 func (sv *Server) sweepGroups() {
 	live := map[string]bool{}
 	for _, v := range sv.listUploads() {
@@ -214,14 +219,23 @@ func (sv *Server) sweepGroups() {
 		if g, ok := strings.CutSuffix(e.Name(), ".group"); ok && validUploadID(g) && !live[g] {
 			sv.cancelGroup(g)
 		}
+		if g, ok := strings.CutSuffix(e.Name(), ".d"); ok && validUploadID(g) && !live[g] {
+			unlock := sv.ups.lock("group " + g) // not while a file of it is put by
+			if _, ok := sv.readGroup(g); !ok {
+				os.RemoveAll(sv.groupDir(g))
+			}
+			unlock()
+		}
 	}
 }
 
-// cancelGroup gives up on a folder: what's in, and what's still going.
+// cancelGroup gives up on a folder: what's in, and what's still going. It
+// waits for a file of it that's being put by.
 func (sv *Server) cancelGroup(g string) bool {
 	if !validUploadID(g) {
 		return false
 	}
+	defer sv.ups.lock("group " + g)()
 	if _, ok := sv.readGroup(g); !ok {
 		return false
 	}

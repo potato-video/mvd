@@ -368,6 +368,56 @@ func TestUploadFolderPaths(t *testing.T) {
 	}
 }
 
+// Cancelling a folder waits for a file of it that's being put by, and that
+// file, finishing after the cancel, leaves nothing behind: before, it made
+// the group's folder again, with no record, and no sweep ever cleared it.
+func TestUploadFolderCancelWhileFinishing(t *testing.T) {
+	ts, dir := uploadServer(t)
+	const g = "00112233aabbccdd"
+	start := func(path string) uploadView {
+		return ts.startUpload(fmt.Sprintf(`{"name": %q, "size": 3, "group": %q, "group_files": 2}`, path, g), 201)
+	}
+	a := start("Show/A.mkv")
+	if code, _, done := ts.put(a.ID, 0, []byte("aaa")); code != 200 || !done {
+		t.Fatalf("A: %d %v", code, done)
+	}
+	b := start("Show/B.mkv")
+	b.Offset = 3 // all of it in, as it is when it's finished
+
+	release := ts.sv.ups.lock("group " + g) // B being put by
+	cancelled := make(chan int, 1)
+	go func() {
+		r := ts.do("DELETE", "/api/uploads/"+g, "", nil)
+		r.Body.Close()
+		cancelled <- r.StatusCode
+	}()
+	time.Sleep(50 * time.Millisecond)
+	if len(cancelled) > 0 {
+		t.Error("the cancel didn't wait for a file being put by")
+	}
+	release()
+	if code := <-cancelled; code != http.StatusNoContent {
+		t.Fatalf("cancel: %d", code)
+	}
+	if _, err := ts.sv.finishInGroup(b); err == nil {
+		t.Error("a file of a cancelled folder was put by")
+	}
+	if ents, _ := os.ReadDir(filepath.Join(dir, ".uploads")); len(ents) != 0 {
+		t.Errorf("left behind: %v", ents)
+	}
+}
+
+// A group's folder with no record (from before the fix above) is swept
+// away.
+func TestSweepOrphanGroupFolder(t *testing.T) {
+	ts, dir := uploadServer(t)
+	testutil.Write(t, filepath.Join(dir, ".uploads", "00112233aabbccdd.d", "Show", "A.mkv"), "aaa")
+	ts.sv.sweepUploads()
+	if ents, _ := os.ReadDir(filepath.Join(dir, ".uploads")); len(ents) != 0 {
+		t.Errorf("left behind: %v", ents)
+	}
+}
+
 // A finished upload is imported straight away (the server knows it's
 // whole, so no waiting for it to settle), and nothing runs again until
 // something changes.
