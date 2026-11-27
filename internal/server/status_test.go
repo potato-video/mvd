@@ -3,9 +3,12 @@ package server
 import (
 	"os"
 	"runtime"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
+
+	"mvd/internal/config"
 )
 
 // /api/status says how the server is: its build, how long it's been up,
@@ -70,6 +73,48 @@ func TestStatusNoUploads(t *testing.T) {
 	ts.json("GET", "/api/status", "", &st)
 	if st.Uploads != 0 || st.Library.Movies == 0 {
 		t.Errorf("%+v", st)
+	}
+}
+
+// features says what the server can do now: each only when it's built in
+// and set up, so a client shows what will work.
+func TestStatusFeatures(t *testing.T) {
+	var files, downloads []string
+	if uploadsBuilt {
+		files = []string{"needs-you", "trash", "uploads"}
+	}
+	if (&Server{}).hasDownloads() {
+		downloads = []string{"downloads"}
+	}
+	on := slices.Sorted(slices.Values(append(files, downloads...)))
+	without := func(names []string, name string) []string {
+		return slices.DeleteFunc(slices.Clone(names), func(s string) bool { return s == name })
+	}
+	for _, c := range []struct {
+		name string
+		set  func(*config.Config)
+		want []string
+	}{
+		{"nothing set up", func(c *config.Config) {}, []string{}},
+		{"everything", func(c *config.Config) {}, on},
+		{"uploads off", func(c *config.Config) { c.Uploads = false }, without(on, "uploads")},
+		{"trash off", func(c *config.Config) { c.TrashMaxAge = 0 }, without(on, "trash")},
+		{"no trash folder", func(c *config.Config) { c.TrashDir = "" }, without(on, "trash")},
+		{"no Transmission", func(c *config.Config) { c.Transmission = "" }, without(on, "downloads")},
+		{"no import folder", func(c *config.Config) { c.ImportDir = "" }, without(without(on, "uploads"), "needs-you")},
+	} {
+		ts := newTestServer(t, "")
+		if c.name != "nothing set up" {
+			ts.sv.cfg.ImportDir, ts.sv.cfg.Uploads, ts.sv.cfg.Transmission = t.TempDir(), true, "http://127.0.0.1:9/transmission/rpc"
+			ts.sv.cfg.TrashDir, ts.sv.cfg.TrashMaxAge, ts.sv.cfg.TrashMaxSize = t.TempDir(), time.Hour, 1<<30
+		}
+		c.set(&ts.sv.cfg)
+		var st statusView
+		ts.json("GET", "/api/status", "", &st)
+		ts.hs.Close()
+		if st.Features == nil || !slices.Equal(st.Features, c.want) {
+			t.Errorf("%s: features %q, want %q", c.name, st.Features, c.want)
+		}
 	}
 }
 

@@ -98,15 +98,11 @@ func (sv *Server) uiTrashItem(w http.ResponseWriter, r *http.Request) {
 // uiEmptyTrash is the trash dialog's button: everything mvd put in the
 // trash goes now. Not while an import is running, which may be adding to it.
 func (sv *Server) uiEmptyTrash(w http.ResponseWriter, r *http.Request) {
-	release, err := sv.lockImports()
+	size, known, err := sv.emptyTrash()
 	if err != nil {
 		sv.renderIncoming(w, "Couldn't empty the trash: "+err.Error(), true)
 		return
 	}
-	size, known := sv.trashSize()
-	library.EmptyTrash(sv.cfg)
-	sv.imports.trashed(0, false)
-	release()
 	w.Header().Set("HX-Trigger", "trash-emptied")
 	msg := "Emptied the trash."
 	if known && size > 0 {

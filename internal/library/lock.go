@@ -24,6 +24,9 @@ import (
 
 const staleLock = 6 * time.Hour
 
+// ErrImportRunning is LockImport's error when another import holds the lock.
+var ErrImportRunning = errors.New("an import is already running")
+
 // held is the locks this process holds, by path: a lock with our own id
 // that isn't in it was left by an earlier process that had the same id.
 var held sync.Map
@@ -46,7 +49,7 @@ func LockImport(cfg config.Config) (release func(), err error) {
 		}
 		if !lockStale(p) {
 			pid, _ := readLock(p)
-			return nil, fmt.Errorf("an import is already running (process %d); if it isn't, delete %s", pid, p)
+			return nil, fmt.Errorf("%w (process %d); if it isn't, delete %s", ErrImportRunning, pid, p)
 		}
 		// Its owner has gone: take it over. Claim it by renaming it to a name
 		// of our own — if two processes try at once, one rename fails, and the

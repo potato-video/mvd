@@ -219,6 +219,8 @@ var routeLevels = map[string]level{
 	"POST /api/import/episode":           admin,
 	"POST /api/import/retry":             admin,
 	"POST /api/import/trash":             admin,
+	"GET /api/trash":                     admin,
+	"DELETE /api/trash":                  admin,
 	"GET /api/downloads":                 admin,
 	"POST /api/downloads":                admin,
 	"POST /api/downloads/{id}/resume":    admin,

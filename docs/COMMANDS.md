@@ -142,7 +142,7 @@ are sent as they are, with HTTP range support, so players can seek.
 ## `mvd status`
 
 ```
-mvd status              # build, uptime, memory, CPU, library, uploads
+mvd status              # build, uptime, memory, CPU, library, uploads, what it offers
 mvd status -every 5s    # a line every 5 seconds, to watch an upload or a rescan
 mvd status -json        # GET /api/status, as it is
 ```
@@ -169,7 +169,14 @@ memory   15.6 MB in use, 17.2 MB at most; Go has 9.1 MB, 4.2 MB of it live; 12 G
 library  312 movies, 41 shows, 1890 episodes; 1.2 TB, 3.4 TB free
 busy     13 goroutines, 1 upload under way
 cpu      3.2% now; 4m 12s since it started; load 0.42 0.31 0.25
+offers   downloads, needs-you, trash, uploads
 ```
+
+`offers` is what the server can do beyond the library, each only when
+it's built in and set up: `downloads` (Transmission), `needs-you`
+(Needs you: an import folder), `trash` (leftovers kept a while rather than
+deleted) and `uploads`. A server older than this command leaves the line
+out.
 
 "In use" is what `top` and `free` count, and "at most" is the peak since it
 started. The library's size is its videos', and "free" what's left on its

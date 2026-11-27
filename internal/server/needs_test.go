@@ -3,6 +3,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -227,5 +228,59 @@ func TestNeedsEpisodes(t *testing.T) {
 	testutil.MustNotExist(t, l.Import, item)
 	if left := ts.leftNow(); len(left) != 0 {
 		t.Errorf("still left: %+v", left)
+	}
+}
+
+// GET /api/trash says how much is in the trash, once an import has looked;
+// DELETE empties it of what mvd put there, and nothing else, and not while
+// an import is running.
+func TestAPITrash(t *testing.T) {
+	ts, l := newImportServer(t)
+	testutil.Write(t, filepath.Join(l.Trash, "2026-11-01 120000 Old.Thing", "a.nfo"), "12345")
+	testutil.Write(t, filepath.Join(l.Trash, "not mvd's.txt"), "x")
+	size := func(method string) (code int, bytes *int64) {
+		t.Helper()
+		r := ts.do(method, "/api/trash", "", nil)
+		defer r.Body.Close()
+		var out struct{ Bytes *int64 }
+		if r.StatusCode == 200 {
+			if err := json.NewDecoder(r.Body).Decode(&out); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return r.StatusCode, out.Bytes
+	}
+	if code, n := size("GET"); code != 200 || n != nil {
+		t.Errorf("before an import has looked: %d, %v", code, n)
+	}
+	ts.sv.imports.trashed(5<<30, false)
+	if code, n := size("GET"); code != 200 || n == nil || *n != 5<<30 {
+		t.Errorf("after: %d, %v", code, n)
+	}
+
+	importMu.Lock()
+	code, _ := size("DELETE")
+	importMu.Unlock()
+	if code != 409 {
+		t.Errorf("emptied during an import: %d", code)
+	}
+	release, err := library.LockImport(ts.sv.cfg) // mvd import, at a terminal
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _ = size("DELETE")
+	release()
+	if code != 409 {
+		t.Errorf("emptied during an import at a terminal: %d", code)
+	}
+	testutil.MustExist(t, l.Trash, "2026-11-01 120000 Old.Thing")
+
+	if code, n := size("DELETE"); code != 200 || n == nil || *n != 5<<30 {
+		t.Errorf("empty: %d, %v", code, n)
+	}
+	testutil.MustNotExist(t, l.Trash, "2026-11-01 120000 Old.Thing")
+	testutil.MustExist(t, l.Trash, "not mvd's.txt")
+	if code, n := size("GET"); code != 200 || n == nil || *n != 0 {
+		t.Errorf("emptied: %d, %v", code, n)
 	}
 }

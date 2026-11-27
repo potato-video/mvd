@@ -32,9 +32,10 @@ type serverStatus struct {
 		Episodes int   `json:"episodes"`
 		Bytes    int64 `json:"bytes"` // 0 from servers before it was there
 	} `json:"library"`
-	Free    *int64     `json:"free"` // nil where the server can't tell
-	Uploads int        `json:"uploads"`
-	CPU     *cpuStatus `json:"cpu"` // nil without /proc (a Mac)
+	Free     *int64     `json:"free"` // nil where the server can't tell
+	Uploads  int        `json:"uploads"`
+	CPU      *cpuStatus `json:"cpu"`      // nil without /proc (a Mac)
+	Features []string   `json:"features"` // nil from servers before API level 2
 }
 
 type cpuStatus struct {
@@ -49,7 +50,7 @@ func cmdStatus(args []string) int {
 	asJSON := fs.Bool("json", false, "print the server's JSON as it is")
 	every := fs.Duration("every", 0, "print a line every so often (5s, say) until stopped")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: mvd status [-json] [-every 5s]\n\nHow the server is doing: its build, uptime, memory, library and uploads.")
+		fmt.Fprintln(os.Stderr, "usage: mvd status [-json] [-every 5s]\n\nHow the server is doing: its build, uptime, memory, library and uploads, and what it offers beyond the library.")
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
@@ -124,6 +125,13 @@ func statusReport(st serverStatus) string {
 			fmt.Fprintf(&b, " on %d cores", c.Cores)
 		}
 		b.WriteString("\n")
+	}
+	if st.Features != nil {
+		b.WriteString("offers   ")
+		if len(st.Features) == 0 {
+			b.WriteString("the library only")
+		}
+		b.WriteString(strings.Join(st.Features, ", ") + "\n")
 	}
 	return b.String()
 }

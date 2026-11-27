@@ -155,7 +155,7 @@ the feature (`internal/torrent`, `internal/archive`) is only linked when a tagge
 | Tag | What |
 |---|---|
 | `webui` | the web pages (html/template, htmx) |
-| `files` | uploads (`uploads.go`, `uploads_folder.go`, `internal/upload`, `mvd upload`), the Needs you API (`needs.go`), and with `webui`, the Incoming page |
+| `files` | uploads (`uploads.go`, `uploads_folder.go`, `internal/upload`, `mvd upload`), the Needs you and trash API (`needs.go`), and with `webui`, the Incoming page |
 | `torrent` | `mvd torrent`, `/api/downloads`, the import's seeding check |
 | `unpack` | unpacking archives on import (`internal/archive`), and taking them as uploads |
 
@@ -1248,13 +1248,14 @@ them there.
 | `GET /api/movies/{id}`, `/api/shows/{id}` | the same, for a movie or a show; a show carries `next_episode_id` |
 | `POST /api/progress/{id}` | `{"position": s, "duration": s}` from a player (`{"position": 0}` clears it), or `{"watched": bool}`; a show id marks every episode |
 | `POST /api/rescan` | read the library again |
-| `GET /api/status` | build, uptime, memory, CPU, the library's counts and size (as the token sees it, the size from the index's stat of each video), the free space on its drive, uploads under way, which token (`access`) |
+| `GET /api/status` | build, uptime, memory, CPU, the library's counts and size (as the token sees it, the size from the index's stat of each video), the free space on its drive, uploads under way, which token (`access`), and `features`: what it can do now beyond the library (`downloads`, `needs-you`, `trash`, `uploads`), each only when built in and set up |
 | `POST /api/import` | import what's ready, no questions asked; returns counts and the report |
 | `GET /api/import` | what the last import left for a person (Needs you), with each question's candidates |
 | `GET /api/import/search`, `/details` | TMDB by words or a reference; a title's details and what importing an item would file |
 | `GET /api/import/poster/{kind}/{id}` | a title's poster, small, streamed through the server |
 | `POST /api/import/choose` | `{"item", "sig", "kind", "tmdb"}`: write the item's hint and start an import |
 | `POST /api/import/retry`, `/trash` | `{"item"}`: try a failed item again; move one to the trash |
+| `GET /api/trash`, `DELETE /api/trash` | the trash's size (`bytes`, once an import has looked); empty it of what mvd put there |
 | `/api/uploads`, `/api/uploads/{id}` | the upload protocol (see Uploads) |
 | `GET /api/downloads` | Transmission's downloads, with their state in words and whether they're ready |
 | `POST /api/downloads` | add one: `{"source": "magnet:...", "kind": "movie"}`, or a form with a `torrent` file |

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mvd
-  version: "1"
+  version: "2"
   summary: mvd's HTTP API, for the web UI and other clients (apps, players, scripts).
   description: |
     Everything a client needs: the library as JSON, streaming, subtitles,
@@ -118,7 +118,7 @@ tags:
   - name: needs
     description: |
       What an import left for a person, and answering it (the website's Needs
-      you). Only in builds with the `files` tag; 404 otherwise. `mvd import` at a
+      you), and the trash. Only in builds with the `files` tag; 404 otherwise. `mvd import` at a
       terminal asks the same questions in any build.
 
 paths:
@@ -129,7 +129,8 @@ paths:
       description: |
         Its build, how long it's been up, its memory, the library's size (as
         the request's token sees it), the free space on its drive, the
-        uploads under way, and which token the request has. Cheap enough to poll every few seconds.
+        uploads under way, which token the request has, and what it can do
+        beyond the library (`features`). Cheap enough to poll every few seconds.
         `mvd status` prints it.
       operationId: status
       responses:
@@ -697,6 +698,41 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: An import is running
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/trash:
+    get:
+      tags: [needs]
+      summary: How much is in the trash
+      description: |
+        API level 2. Everything mvd put in the trash: what imports cleared
+        away, and what was moved there. `bytes` is left out until an import
+        has looked at the trash since the server started. Cheap to poll.
+      operationId: trashSize
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Trash" }
+    delete:
+      tags: [needs]
+      summary: Empty the trash
+      description: |
+        API level 2. Deletes everything mvd put in the trash, now rather than
+        when it's old enough (`trash_max_age`); anything else in the trash
+        folder stays. Not while an import is running.
+      operationId: emptyTrash
+      responses:
+        "200":
+          description: Emptied. `bytes` is how much was deleted, if that was known.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Trash" }
         "409":
           description: An import is running
           content:
@@ -1728,6 +1764,20 @@ components:
           properties:
             name: { type: string, description: "\"admin\" for the [server] token, a [[server.tokens]] entry's name, or \"\" with no token configured" }
             admin: { type: boolean, description: "Whether it can use every route (true with no token configured)" }
+        features:
+          type: array
+          items: { type: string }
+          description: |
+            API level 2. What the server can do now, beyond the library: each
+            only when it's built in and set up, so a client offers what will
+            work. The routes are still the admin's (`access.admin`). A client
+            skips names it doesn't know; more may come.
+            - `downloads`: `/api/downloads` (the `downloads` build, with
+              Transmission's address in config.toml)
+            - `needs-you`: Needs you, `/api/import` (an import folder)
+            - `trash`: `/api/trash` (what imports clear away, and what's moved
+              to the trash, goes there rather than being deleted)
+            - `uploads`: `/api/uploads` (an import folder, and `uploads = true`)
 
     Upload:
       type: object
@@ -1891,6 +1941,11 @@ components:
         poster: { type: string, description: "The poster's address on this server" }
         url: { type: string, description: "Its page on TMDB" }
         into: { type: string, description: "What importing would file: \"Into Movies\", \"8 episodes into TV, S01E01 to S01E08\"" }
+
+    Trash:
+      type: object
+      properties:
+        bytes: { type: integer, format: int64, description: "Left out while it isn't known" }
 
     OK:
       type: object

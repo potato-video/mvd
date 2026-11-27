@@ -32,6 +32,8 @@ import (
 //	POST /api/import/episode         settle a video: {item, sig, video, tmdb, season, episode}
 //	POST /api/import/retry           try a failed item again
 //	POST /api/import/trash           an item (or one of its videos) to the trash
+//	GET  /api/trash                  how much is in the trash
+//	DELETE /api/trash                empty it
 
 func (sv *Server) needsRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/import", sv.apiLeft)
@@ -43,6 +45,8 @@ func (sv *Server) needsRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/import/episode", sv.apiEpisode)
 	mux.HandleFunc("POST /api/import/retry", sv.apiRetry)
 	mux.HandleFunc("POST /api/import/trash", sv.apiTrash)
+	mux.HandleFunc("GET /api/trash", sv.apiTrashSize)
+	mux.HandleFunc("DELETE /api/trash", sv.apiEmptyTrash)
 }
 
 // leftItem is an item in the import folder waiting for a person.
@@ -687,6 +691,21 @@ func (sv *Server) trashItem(rel, video string) (name string, deleted bool, err e
 	return name, deleted, nil
 }
 
+// emptyTrash deletes everything mvd put in the trash, now rather than when
+// it's old enough: not while an import is running, which may be adding to
+// it. It says how much went, if that was known.
+func (sv *Server) emptyTrash() (size int64, known bool, err error) {
+	release, err := sv.lockImports()
+	if err != nil {
+		return 0, false, err
+	}
+	defer release()
+	size, known = sv.trashSize()
+	library.EmptyTrash(sv.cfg)
+	sv.imports.trashed(0, false)
+	return size, known, nil
+}
+
 // trashedText is what the website says once an item's gone: moved, or
 // deleted when there's no trash to move it to.
 func trashedText(name string, deleted bool) string {
@@ -706,10 +725,10 @@ func apiError(w http.ResponseWriter, code int, err error) {
 
 // answerCode is the status for an answer that didn't take.
 func answerCode(err error) int {
-	switch err {
-	case errGone:
+	switch {
+	case errors.Is(err, errGone):
 		return http.StatusNotFound
-	case errStale, errBusy:
+	case errors.Is(err, errStale), errors.Is(err, errBusy), errors.Is(err, library.ErrImportRunning):
 		return http.StatusConflict
 	}
 	return http.StatusBadRequest
@@ -848,4 +867,30 @@ func (sv *Server) apiTrash(w http.ResponseWriter, r *http.Request) {
 func hasVideos(item string) bool {
 	sum, err := library.PlanItem(item, "")
 	return err == nil && sum.Movies+sum.Episodes+sum.Unknown > 0
+}
+
+// trashBytes is the trash's size, left out while it isn't known.
+type trashBytes struct {
+	Bytes *int64 `json:"bytes,omitempty"`
+}
+
+func (sv *Server) apiTrashSize(w http.ResponseWriter, r *http.Request) {
+	var v trashBytes
+	if n, ok := sv.trashSize(); ok {
+		v.Bytes = &n
+	}
+	writeJSON(w, v)
+}
+
+func (sv *Server) apiEmptyTrash(w http.ResponseWriter, r *http.Request) {
+	n, known, err := sv.emptyTrash()
+	if err != nil {
+		apiError(w, answerCode(err), err)
+		return
+	}
+	var v trashBytes
+	if known {
+		v.Bytes = &n
+	}
+	writeJSON(w, v)
 }

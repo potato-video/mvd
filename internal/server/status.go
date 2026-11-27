@@ -32,6 +32,34 @@ type statusView struct {
 	Uploads    int           `json:"uploads"`        // under way: started and not yet finished
 	CPU        *cpuView      `json:"cpu,omitempty"`  // Linux only
 	Access     accessView    `json:"access"`         // the token the request came with
+	Features   []string      `json:"features"`       // what it can do now (features)
+}
+
+// features is what the server can do now, beyond the library: each only
+// when it's built in and set up, so a client offers what will work. A
+// list rather than an object, so a part can be added, or split, without
+// tying the API to today's shape. The routes are still the admin's.
+//
+//	downloads  /api/downloads: the downloads feature, and Transmission's address
+//	needs-you  Needs you (/api/import): the files feature, and an import folder
+//	trash      /api/trash: the files feature, and the trash on (leftovers go there, not deleted)
+//	uploads    /api/uploads: the files feature, an import folder, and [server] uploads = true
+func (sv *Server) features() []string {
+	cfg := sv.cfg
+	f := []string{}
+	if sv.hasDownloads() && cfg.Transmission != "" {
+		f = append(f, "downloads")
+	}
+	if uploadsBuilt && cfg.ImportDir != "" {
+		f = append(f, "needs-you")
+	}
+	if uploadsBuilt && cfg.TrashDir != "" && cfg.TrashMaxAge > 0 && cfg.TrashMaxSize > 0 {
+		f = append(f, "trash")
+	}
+	if uploadsBuilt && cfg.Uploads && cfg.ImportDir != "" {
+		f = append(f, "uploads")
+	}
+	return f
 }
 
 // accessView says which token a request has: its name ("admin" for the
@@ -75,7 +103,7 @@ func (sv *Server) status() statusView {
 	st := statusView{Version: Version, API: APILevel, Go: runtime.Version(), Platform: runtime.GOOS + "/" + runtime.GOARCH,
 		Started: sv.started, Uptime: int64(sv.clock().Sub(sv.started) / time.Second),
 		Memory:     memoryView{Go: ms.Sys, Heap: ms.HeapAlloc, GCs: ms.NumGC},
-		Goroutines: runtime.NumGoroutine()}
+		Goroutines: runtime.NumGoroutine(), Features: sv.features()}
 	if b, err := os.ReadFile("/proc/self/status"); err == nil {
 		st.Memory.RSS, st.Memory.PeakRSS = readProcStatus(b)
 	}

@@ -15,7 +15,8 @@ const statusJSON = `{"version":"99bb558","go":"go1.24.7","platform":"linux/mips"
 	"memory":{"rss":16330752,"peak_rss":18006016,"go":9541632,"heap":4404019,"gcs":12},
 	"goroutines":13,"library":{"movies":312,"shows":41,"episodes":1890,"bytes":1319413953331},
 	"free":3738339534438,"uploads":1,
-	"cpu":{"percent":3.2,"seconds":252.4,"load":[0.42,0.31,0.25],"cores":1}}`
+	"cpu":{"percent":3.2,"seconds":252.4,"load":[0.42,0.31,0.25],"cores":1},
+	"features":["downloads","needs-you","trash","uploads"]}`
 
 func fakeStatus(t *testing.T) *apiClient {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +42,7 @@ func TestStatusReport(t *testing.T) {
 		"library  312 movies, 41 shows, 1890 episodes; 1.2 TB, 3.4 TB free",
 		"busy     13 goroutines, 1 upload under way",
 		"cpu      3.2% now; 4m 12s since it started; load 0.42 0.31 0.25",
+		"offers   downloads, needs-you, trash, uploads",
 	} {
 		if !strings.Contains(got, want+"\n") {
 			t.Errorf("missing %q in:\n%s", want, got)
@@ -60,6 +62,18 @@ func TestStatusReportNoRSS(t *testing.T) {
 	if !strings.Contains(got, "memory   Go has 9.1 MB, 4.2 MB of it live; 0 GCs\n") ||
 		!strings.Contains(got, "up under a minute") || !strings.Contains(got, "no uploads") || strings.Contains(got, "cpu") {
 		t.Errorf("%s", got)
+	}
+}
+
+// What a server can do beyond the library; an older server doesn't say.
+func TestStatusFeaturesLine(t *testing.T) {
+	var st serverStatus
+	if got := statusReport(st); strings.Contains(got, "offers") {
+		t.Errorf("an older server: %s", got)
+	}
+	st.Features = []string{}
+	if got := statusReport(st); !strings.Contains(got, "offers   the library only\n") {
+		t.Errorf("nothing more: %s", got)
 	}
 }
 

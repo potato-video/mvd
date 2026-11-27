@@ -202,7 +202,7 @@ var Version = "dev"
 // (X-Mvd-Api), as do /api/status and the Bonjour TXT, so a client can tell
 // what a server has without making sense of its build. A server without
 // it is level 1. api/openapi.yaml's info.version is the same number.
-const APILevel = 1
+const APILevel = 2
 
 var apiLevel = strconv.Itoa(APILevel)
 
