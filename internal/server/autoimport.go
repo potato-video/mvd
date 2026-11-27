@@ -18,13 +18,13 @@ import (
 //
 // It looks every minute, and at once when an upload finishes. It only
 // imports when the folder has changed since the last import, or when that
-// import left something waiting (still arriving: a minute; still seeding,
-// or failed: ten), so an idle folder, or one holding only things that need a person
+// import left something waiting (still arriving, or come in while it ran:
+// a minute; still seeding, or failed: ten), so an idle folder, or one holding only things that need a person
 // ("Needs you"), doesn't import over and over.
 
 const (
 	autoEvery        = time.Minute
-	autoRetryWaiting = time.Minute      // something still arriving
+	autoRetryWaiting = time.Minute      // something still arriving, or come in mid-import
 	autoRetrySeeding = 10 * time.Minute // a finished download still seeding
 )
 
@@ -101,7 +101,7 @@ func (sv *Server) autoImportOnce() bool {
 	sig, retryFailed := sv.imports.settle()
 	a.lastSig = sig
 	switch {
-	case res.Waiting > 0:
+	case res.Waiting > 0, sv.imports.arrivedDuring(sc):
 		a.retryAt = now.Add(autoRetryWaiting)
 	case res.Seeding > 0, retryFailed, res.stopped: // (a failure may be TMDB out of reach for a while)
 		a.retryAt = now.Add(autoRetrySeeding)

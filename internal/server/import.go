@@ -132,6 +132,30 @@ func (im *imports) settle() (uint64, bool) {
 	return im.after.Sig, retry
 }
 
+// arrivedDuring says whether something came into the import folder while
+// the last import ran, so it never looked at it: an item in the folder as
+// the import left it, with no result, that wasn't there (or was different)
+// in before, the folder as it was when the import started. A download
+// Transmission moves in mid-import is one. Items that were there before and
+// have no result (a later archive volume, gone with its first) don't count.
+func (im *imports) arrivedDuring(before importScan) bool {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+	seen := map[string]bool{}
+	for _, r := range im.results {
+		seen[r.Path] = true
+	}
+	for _, it := range im.after.Items {
+		if seen[it.Path] {
+			continue
+		}
+		if was := before.item(it.Path); was == nil || was.Sig != it.Sig {
+			return true
+		}
+	}
+	return false
+}
+
 // trashed records the trash's size: as an import found it (grew false),
 // or grown by something put there since.
 func (im *imports) trashed(n int64, grew bool) {

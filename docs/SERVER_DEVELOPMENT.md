@@ -568,7 +568,10 @@ and `internal/upload` (the client side, used by `mvd upload`).
 `internal/server/autoimport.go`. Every minute, and when an upload finishes,
 it imports if the import folder's signature (paths, sizes and times) has
 changed since the last import, or if the last import left something waiting
-(retried in a minute), seeding, or failed (retried in ten). So a folder
+(retried in a minute), seeding, or failed (retried in ten). Something that
+came in while the import ran (in the folder it left, with no result, and not
+there or different when it started) is retried in a minute too: the folder
+it left is the signature, so it would look unchanged. So a folder
 holding only items that need a person doesn't import every minute. Imports
 that file nothing aren't logged.
 
