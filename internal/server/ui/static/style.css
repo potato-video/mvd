@@ -760,7 +760,7 @@ h1, h2, .title {
    it, pointing down for descending as on the Apple TV. */
 .sortbar { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin: -16px 0 16px; }
 .sortbar label { color: var(--dim); font-size: 0.9rem; }
-.sortbar select {
+.sortbar select, .need-ep select {
   padding: 6px 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -1179,7 +1179,7 @@ form.inline { display: contents; }
 .need-file-acts { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 2px; }
 .need-pick:empty { display: none; }
 .need-ep { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px; }
-.need-ep select { flex: 1 1 16em; min-width: 0; font: inherit; font-size: 0.9rem; }
+.need-ep select { flex: 1 1 14em; min-width: 0; }
 
 /* A card's titles: each opens the dialog; the arrow is its TMDB page. */
 .cands { list-style: none; margin: 10px 0 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); }

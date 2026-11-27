@@ -592,9 +592,8 @@ func (sv *Server) episodes(rel, video string, show int) (episodeList, error) {
 		}
 		l.Seasons = append(l.Seasons, c)
 	}
-	sort.SliceStable(l.Seasons, func(i, j int) bool { // specials first: the likeliest home for what's left
-		return l.Seasons[i].Season == 0 && l.Seasons[j].Season != 0
-	})
+	// Specials first, the likeliest home for what's left; then in order.
+	sort.Slice(l.Seasons, func(i, j int) bool { return l.Seasons[i].Season < l.Seasons[j].Season })
 	for _, e := range library.SuggestEpisodes(seasons, v, 3) {
 		l.Suggested = append(l.Suggested, choiceOf(e))
 	}

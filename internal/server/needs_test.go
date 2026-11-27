@@ -195,7 +195,7 @@ func TestNeedsEpisodes(t *testing.T) {
 
 	var eps episodeList
 	ts.json("GET", "/api/import/episodes?item="+url.QueryEscape(d.Item)+"&video="+url.QueryEscape(bloopers.Path)+"&tmdb=17174", "", &eps)
-	if eps.Title != "Ghosts (2019)" || len(eps.Seasons) != 3 || eps.Seasons[0].Season != 0 ||
+	if eps.Title != "Ghosts (2019)" || len(eps.Seasons) != 3 || eps.Seasons[0].Season != 0 || eps.Seasons[2].Season != 2 ||
 		len(eps.Seasons[0].Episodes) != 4 || len(eps.Suggested) != 2 || eps.Suggested[0].Code != "S00E03" {
 		t.Errorf("episodes: %+v", eps)
 	}
