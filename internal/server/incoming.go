@@ -97,7 +97,7 @@ func (sv *Server) incoming() incomingView {
 	if cfg.ImportDir != "" {
 		if !library.Exists(cfg.ImportDir) && !library.Exists(filepath.Dir(cfg.ImportDir)) { // (not just not made yet)
 			v.Banners = append(v.Banners, "The import folder isn't there ("+cfg.ImportDir+"): is the drive plugged in?")
-		} else if n, ok := library.FreeSpace(cfg.ImportDir); ok {
+		} else if n, ok := sv.freeSpace(); ok { // the library's drive, as /api/status says
 			v.Free = sizeStr(n) + " free"
 			if n < nearlyFull {
 				v.Banners = append(v.Banners, "The drive is nearly full: "+sizeStr(n)+" free.")
