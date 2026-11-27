@@ -7,6 +7,10 @@
 /dist/
 mvd-src.tar.gz
 
+# Local deploy scripts
+/to_pi.sh
+/to_wrt.sh
+
 # Go tooling
 /coverage*
 *.prof
