@@ -147,8 +147,11 @@ func TestPlaylist(t *testing.T) {
 /remux/m1/00002.m4s?part=1&audio=0
 #EXT-X-ENDLIST
 `
-	if got := string(ix.Playlist("/remux/m1/", "?part=1&audio=0")); got != want {
+	if got := string(ix.Playlist("/remux/m1/", "?part=1&audio=0", 0)); got != want {
 		t.Errorf("got\n%s", got)
+	}
+	if got := string(ix.Playlist("/", "", 4.5)); !strings.Contains(got, "#EXT-X-INDEPENDENT-SEGMENTS\n#EXT-X-START:TIME-OFFSET=4.500,PRECISE=YES\n") {
+		t.Errorf("starting partway:\n%s", got)
 	}
 	for at, seg := range map[float64]int{0: 0, 1: 0, 2.002: 1, 4.4: 1, 4.5: 2, 9: 2, 100: 2, -1: 0} {
 		if got := ix.Segment(at); got != seg {

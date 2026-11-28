@@ -131,7 +131,7 @@ func (m *Manager) Playlist(src Source, owner string, t float64, base, query stri
 			return nil, err
 		}
 	}
-	return s.ix.Playlist(base, query), nil
+	return s.ix.Playlist(base, query, t), nil
 }
 
 // File returns the path of init.mp4 or a segment ("00012.m4s") of src's

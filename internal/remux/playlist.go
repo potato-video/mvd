@@ -11,7 +11,9 @@ import (
 // whole from the start and a player can seek anywhere in it. base is
 // what each URI starts with ("/remux/m238/"), query what it ends with
 // ("?part=1&audio=0"). Segment N is "%05d.m4s", as ffmpeg names them.
-func (ix *Index) Playlist(base, query string) []byte {
+// start, when it's past the beginning, is where the player is to start, so
+// Safari doesn't fetch the first segment before it seeks.
+func (ix *Index) Playlist(base, query string, start float64) []byte {
 	var b bytes.Buffer
 	most := 0.0
 	for i := range ix.Keyframes {
@@ -19,6 +21,9 @@ func (ix *Index) Playlist(base, query string) []byte {
 	}
 	fmt.Fprintf(&b, "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:%d\n", int(math.Ceil(most)))
 	b.WriteString("#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-INDEPENDENT-SEGMENTS\n")
+	if start > 0 {
+		fmt.Fprintf(&b, "#EXT-X-START:TIME-OFFSET=%.3f,PRECISE=YES\n", start)
+	}
 	fmt.Fprintf(&b, "#EXT-X-MAP:URI=\"%sinit.mp4%s\"\n", base, query)
 	for i := range ix.Keyframes {
 		fmt.Fprintf(&b, "#EXTINF:%.3f,\n%s%05d.m4s%s\n", ix.length(i), base, i, query)
