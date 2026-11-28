@@ -1477,6 +1477,7 @@ components:
       properties:
         container: { type: string, description: "mkv, mp4, m4v, mov, webm, avi, ts, wmv..." }
         duration: { type: number, description: "seconds" }
+        bitrate: { type: integer, description: "kb/s, the whole file's" }
         tracks:
           type: array
           items: { $ref: "#/components/schemas/Track" }
@@ -1488,6 +1489,7 @@ components:
       properties:
         kind: { enum: [video, audio, subtitle] }
         codec: { type: string, description: "ffprobe's name: h264, hevc, aac, eac3, subrip, ass, hdmv_pgs_subtitle..." }
+        profile: { type: string, description: "video and audio, as ffprobe names it: High, High 10, Main 10, LC, DTS-HD MA, Dolby Digital Plus + Dolby Atmos" }
         lang: { type: string, description: "As the file has it, usually ISO 639-2 (eng, fre); absent when unknown" }
         title: { type: string }
         default: { type: boolean }
@@ -1497,6 +1499,15 @@ components:
         channels: { type: integer, description: "audio" }
         width: { type: integer, description: "video" }
         height: { type: integer, description: "video" }
+        bitrate: { type: integer, description: "kb/s, video and audio, where the container has it (MKV doesn't)" }
+        tag: { type: string, description: "video: the codec tag, where the container has one (avc1, hvc1, hev1, XVID, DX50)" }
+        bits: { type: integer, description: "video: bit depth, 8, 10 or 12" }
+        sar: { type: string, description: "video: the pixel shape, when it isn't 1:1 (\"64:45\"); the picture is width × sar / height" }
+        dar: { type: string, description: "video: the picture's shape, as ffprobe works it out (\"16:9\")" }
+        fps: { type: string, description: "video: the frame rate as a fraction (\"24000/1001\", \"25/1\")" }
+        interlaced: { type: boolean, description: "video: flagged interlaced (a flag, which a DVD of a film often has though it's progressive)" }
+        hdr: { enum: [pq, hlg], description: "video: pq for HDR10 and HDR10+, hlg; absent for SDR" }
+        dv: { type: integer, description: "video: the Dolby Vision profile (5, 7, 8...), when the stream has a configuration record" }
 
     MovieBrief:
       allOf:

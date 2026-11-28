@@ -831,9 +831,16 @@ know it as).
 
 `internal/library/probe.go` and `internal/server/probe.go`. When ffprobe is
 on the `PATH` (looked up once, at the first probe), the server asks it about
-each video file: the container, the duration and each track's kind, codec,
-language, title and flags (default, forced, hearing-impaired, commentary).
-Without ffprobe nothing is probed, the API has no `files`, and clients do
+each video file: the container, the duration and bitrate, and each track's
+kind, codec, language, title and flags (default, forced, hearing-impaired,
+commentary). Audio tracks add the channels and profile (`DTS-HD MA`,
+`Dolby TrueHD + Dolby Atmos`); video tracks what the picture is: the size,
+profile (`High 10`), codec tag where the container has one (`hev1`, `XVID`),
+bit depth from the pixel format, pixel shape when it isn't square and the
+picture's, the frame rate as a fraction (`24000/1001`, snapped to the rate
+it's near, since an MP4's average comes out ragged), whether it's flagged
+interlaced, the HDR kind (`pq` or `hlg`, from the transfer function) and
+the Dolby Vision profile when there's a configuration record. Without ffprobe nothing is probed, the API has no `files`, and clients do
 what they did before. The import's runtime tie-break uses the same `Probe`.
 
 - **Only the headers:** `-probesize` and `-analyzeduration` of 1 MB and 1 s,
@@ -842,14 +849,19 @@ what they did before. The import's runtime tie-break uses the same `Probe`.
   runs at a time. `-protocol_whitelist file`, so a "video" that's really a
   playlist can't have it fetch what it names.
 - **Only the file's own tags.** No counting lines and no guessing languages:
-  a track without a language has none (`und` is dropped).
+  a track without a language has none (`und` is dropped). Interlacing is
+  the flag, which a DVD of a film often has though it's progressive, and
+  is often unknown.
 - **JSON, else ffprobe's description.** After reading the headers, ffprobe
   opens a decoder for each stream, and stops where one won't open. The
   router's only HEVC decoder is `hevc_v4l2m2m`, for hardware it doesn't
   have, so for HEVC files it prints `{` and exits 1. Its description of the
   file (`av_dump_format`, on stderr at `-v info`) comes before that, with
   the same fields: `parseDump` reads it when the JSON is incomplete. The
-  exit status is ignored. A file neither describes is kept with no
+  frame rate there is rounded (`23.98`) and snapped back to its fraction.
+  With no decoder for a stream, ffprobe knows neither its profile nor its
+  pixel format (`none`), so the router has no profile or bit depth for
+  HEVC; the rest is in the description. The exit status is ignored. A file neither describes is kept with no
   container, so it isn't tried again until it changes.
 - **`probeVersion`** is saved with each probe; a probe from another version
   is dropped at the next scan and the file probed again. Bump it when
@@ -870,8 +882,10 @@ what they did before. The import's runtime tie-break uses the same `Probe`.
 - **In the API,** `files` is only in full views (and so in Up Next), and
   only when every part has been probed, so it always lines up with
   `streams`.
-- **Testing:** `testutil.WriteClip` makes a 3 KB MKV with flagged tracks
-  when ffmpeg is installed. Tests that need ffprobe or ffmpeg skip without
+- **Testing:** `testutil.WriteClip` makes a 3 KB MKV with flagged tracks,
+  a 16:9 picture from 4:3 pixels, 24000/1001 and flagged interlaced, when
+  ffmpeg is installed. HDR, Dolby Vision and the rest are tested on saved
+  JSON and descriptions. Tests that need ffprobe or ffmpeg skip without
   them, and the test library's episode `S01E02` is a real clip when ffmpeg
   is there, so making the Apple apps' fixtures needs both.
 

@@ -24,6 +24,13 @@ const starCityJSON = `{"programs":[],"streams":[
 {"codec_name":"ass","codec_type":"subtitle","disposition":{"default":0,"comment":0,"forced":0,"hearing_impaired":1},"tags":{"LANGUAGE":"ENG","Title":" Signs "}}
 ],"format":{"format_name":"matroska,webm","duration":"3121.000000"}}`
 
+// A 4K HDR10 film with Dolby Vision, as ffprobe 6.1's JSON has it.
+const hdrJSON = `{"streams":[
+{"codec_name":"hevc","profile":"Main 10","codec_type":"video","codec_tag_string":"[0][0][0][0]","width":3840,"height":1608,"sample_aspect_ratio":"1:1","display_aspect_ratio":"160:67","pix_fmt":"yuv420p10le","color_transfer":"smpte2084","field_order":"progressive","avg_frame_rate":"24000/1001","disposition":{"default":1},"side_data_list":[{"side_data_type":"DOVI configuration record","dv_profile":8}]},
+{"codec_name":"truehd","profile":"Dolby TrueHD + Dolby Atmos","codec_type":"audio","codec_tag_string":"[0][0][0][0]","channels":8,"avg_frame_rate":"0/0","disposition":{"default":1},"tags":{"language":"eng"}},
+{"codec_name":"eac3","profile":"unknown","codec_type":"audio","channels":6,"bit_rate":"640000"}
+],"format":{"format_name":"matroska,webm","duration":"7864.000000","bit_rate":"16642123"}}`
+
 func TestParseProbe(t *testing.T) {
 	mf := &MediaFile{}
 	parseProbe(mf, []byte(starCityJSON), "/tv/Star City/S01E01.mkv")
@@ -36,6 +43,18 @@ func TestParseProbe(t *testing.T) {
 	}}
 	if !reflect.DeepEqual(mf, want) {
 		t.Errorf("got  %+v\nwant %+v", mf, want)
+	}
+
+	mf = &MediaFile{}
+	parseProbe(mf, []byte(hdrJSON), "a.mkv")
+	want = &MediaFile{Container: "mkv", Duration: 7864, Bitrate: 16642, Tracks: []Track{
+		{Kind: "video", Codec: "hevc", Profile: "Main 10", Default: true, Width: 3840, Height: 1608,
+			Bits: 10, DAR: "160:67", FPS: "24000/1001", HDR: "pq", DV: 8},
+		{Kind: "audio", Codec: "truehd", Profile: "Dolby TrueHD + Dolby Atmos", Lang: "eng", Default: true, Channels: 8},
+		{Kind: "audio", Codec: "eac3", Channels: 6, Bitrate: 640},
+	}}
+	if !reflect.DeepEqual(mf, want) {
+		t.Errorf("HDR:\ngot  %+v\nwant %+v", mf, want)
 	}
 
 	// Nothing usable: no Container, so it's known to have failed.
@@ -83,9 +102,10 @@ func TestProbe(t *testing.T) {
 	}
 	st, _ := os.Stat(p)
 	want := []Track{
-		{Kind: "video", Codec: "h264", Width: 64, Height: 48},
-		{Kind: "audio", Codec: "aac", Lang: "eng", Default: true, Channels: 2},
-		{Kind: "audio", Codec: "aac", Lang: "eng", Title: "Director", Commentary: true, Channels: 1},
+		{Kind: "video", Codec: "h264", Profile: "Constrained Baseline", Width: 64, Height: 48,
+			Bits: 8, SAR: "4:3", DAR: "16:9", FPS: "24000/1001", Interlaced: true},
+		{Kind: "audio", Codec: "aac", Profile: "LC", Lang: "eng", Default: true, Channels: 2},
+		{Kind: "audio", Codec: "aac", Profile: "LC", Lang: "eng", Title: "Director", Commentary: true, Channels: 1},
 		{Kind: "subtitle", Codec: "subrip", Default: true, Forced: true},
 		{Kind: "subtitle", Codec: "subrip", Lang: "fre", HearingImpaired: true},
 		{Kind: "subtitle", Codec: "subrip"},
@@ -94,7 +114,7 @@ func TestProbe(t *testing.T) {
 	if len(mf.Tracks) > 0 {
 		mf.Tracks[0].Default = false
 	}
-	if mf.Container != "mkv" || mf.Duration < 0.9 || mf.Duration > 1.5 || mf.Size != st.Size() ||
+	if mf.Container != "mkv" || mf.Duration < 0.9 || mf.Duration > 1.5 || mf.Bitrate == 0 || mf.Size != st.Size() ||
 		!mf.ModTime.Equal(st.ModTime()) || !reflect.DeepEqual(mf.Tracks, want) {
 		t.Errorf("got %+v\ntracks %+v", mf, mf.Tracks)
 	}
@@ -243,12 +263,44 @@ const mp4Dump = `Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'a.m4v':
   Stream #0:4[0x0]: Video: mjpeg (Baseline), yuvj420p(pc, bt470bg/unknown/unknown), 600x900, 90k tbr, 90k tbn (attached pic)
 `
 
+// Video streams as ffprobe describes them, one file each: the parts that
+// say what the picture is. Dolby Vision's record is side data under the
+// stream; swapped field orders have parentheses of their own.
+const (
+	hdrDump = `Input #0, matroska,webm, from 'a.mkv':
+  Duration: 02:11:04.00, start: 0.000000, bitrate: 16642 kb/s
+  Stream #0:0: Video: hevc (Main 10) (hvc1 / 0x31637668), yuv420p10le(tv, bt2020nc/bt2020/smpte2084), 3840x1608, 14894 kb/s, SAR 1:1 DAR 160:67, 23.98 fps, 23.98 tbr, 1k tbn (default)
+    Metadata:
+      title           : 4K HDR
+    Side data:
+      DOVI configuration record: version: 1.0, profile: 8, level: 6, rpu flag: 1, el flag: 0, bl flag: 1, compatibility id: 1
+`
+	hlgDump = `Input #0, matroska,webm, from 'a.mkv':
+  Duration: 00:58:00.00, start: 0.000000, bitrate: N/A
+  Stream #0:0: Video: hevc (Main 10) (hev1 / 0x31766568), yuv420p10le(tv, bt2020nc/bt2020/arib-std-b67, top coded first (swapped)), 1920x1080 [SAR 1:1 DAR 16:9], 25 fps, 25 tbr, 1k tbn
+`
+	dvdDump = `Input #0, mpeg, from 'a.vob':
+  Duration: 01:30:00.00, start: 0.280000, bitrate: 8000 kb/s
+  Stream #0:0[0x1e0]: Video: mpeg2video (Main), yuv420p(tv, top first), 720x576 [SAR 64:45 DAR 16:9], 7500 kb/s, 25 fps, 25 tbr, 90k tbn (default)
+`
+	pinkyDump = `Input #0, avi, from 'a.avi':
+  Duration: 00:22:00.00, start: 0.000000, bitrate: 1700 kb/s
+  Stream #0:0: Video: msmpeg4v2 (MP42 / 0x3234504D), yuv420p, 320x240, 1500 kb/s, 29 fps, 29 tbr, 29 tbn
+`
+	tsDump = `Input #0, mpegts, from 'a.ts':
+  Duration: 00:30:00.00, start: 1.400000, bitrate: 12000 kb/s
+  Program 1
+  Stream #0:0[0x100]: Video: h264 (High) ([27][0][0][0] / 0x001B), yuv420p(tv, bt709, top first), 1920x1080 [SAR 1:1 DAR 16:9], 29.97 fps, 29.97 tbr, 90k tbn
+`
+)
+
 func TestParseDump(t *testing.T) {
 	mf := &MediaFile{}
 	parseDump(mf, []byte(starCityDump), "/tv/Star City/S01E01.mkv")
-	want := &MediaFile{Container: "mkv", Duration: 3592.45, Tracks: []Track{
-		{Kind: "video", Codec: "hevc", Default: true, Width: 2376, Height: 1080},
-		{Kind: "audio", Codec: "eac3", Default: true, Channels: 6},
+	// The router has no HEVC decoder, so no pixel format, and no profile.
+	want := &MediaFile{Container: "mkv", Duration: 3592.45, Bitrate: 2878, Tracks: []Track{
+		{Kind: "video", Codec: "hevc", Default: true, Width: 2376, Height: 1080, DAR: "11:5", FPS: "24000/1001"},
+		{Kind: "audio", Codec: "eac3", Default: true, Channels: 6, Bitrate: 768},
 		{Kind: "subtitle", Codec: "subrip", Default: true, Forced: true},
 		{Kind: "subtitle", Codec: "subrip"},
 		{Kind: "subtitle", Codec: "subrip"},
@@ -260,14 +312,37 @@ func TestParseDump(t *testing.T) {
 
 	mf = &MediaFile{}
 	parseDump(mf, []byte(mp4Dump), "/movies/a.m4v")
-	want = &MediaFile{Container: "m4v", Duration: 6127.15, Tracks: []Track{
-		{Kind: "video", Codec: "h264", Default: true, Width: 1920, Height: 800},
-		{Kind: "audio", Codec: "aac", Lang: "spa", Default: true, Channels: 2},
-		{Kind: "audio", Codec: "ac3", Lang: "eng", Title: "Director", Commentary: true, Channels: 8},
+	want = &MediaFile{Container: "m4v", Duration: 6127.15, Bitrate: 2100, Tracks: []Track{
+		{Kind: "video", Codec: "h264", Profile: "High", Tag: "avc1", Default: true, Width: 1920, Height: 800,
+			Bitrate: 1900, Bits: 8, DAR: "12:5", FPS: "24000/1001"},
+		{Kind: "audio", Codec: "aac", Profile: "LC", Lang: "spa", Default: true, Channels: 2, Bitrate: 125},
+		{Kind: "audio", Codec: "ac3", Lang: "eng", Title: "Director", Commentary: true, Channels: 8, Bitrate: 640},
 		{Kind: "subtitle", Codec: "mov_text", Lang: "eng", Forced: true},
 	}}
 	if !reflect.DeepEqual(mf, want) {
 		t.Errorf("MP4:\ngot  %+v\nwant %+v", mf, want)
+	}
+
+	for name, c := range map[string]struct {
+		dump string
+		want Track
+	}{
+		"HDR10 and Dolby Vision": {hdrDump, Track{Kind: "video", Codec: "hevc", Profile: "Main 10", Tag: "hvc1", Title: "4K HDR",
+			Default: true, Width: 3840, Height: 1608, Bitrate: 14894, Bits: 10, DAR: "160:67", FPS: "24000/1001", HDR: "pq", DV: 8}},
+		"HLG, swapped fields": {hlgDump, Track{Kind: "video", Codec: "hevc", Profile: "Main 10", Tag: "hev1",
+			Width: 1920, Height: 1080, Bits: 10, DAR: "16:9", FPS: "25/1", HDR: "hlg", Interlaced: true}},
+		"a DVD": {dvdDump, Track{Kind: "video", Codec: "mpeg2video", Profile: "Main", Default: true,
+			Width: 720, Height: 576, Bitrate: 7500, Bits: 8, SAR: "64:45", DAR: "16:9", FPS: "25/1", Interlaced: true}},
+		"Pinky and the Brain": {pinkyDump, Track{Kind: "video", Codec: "msmpeg4v2", Tag: "MP42",
+			Width: 320, Height: 240, Bitrate: 1500, Bits: 8, FPS: "29/1"}},
+		"MPEG-TS": {tsDump, Track{Kind: "video", Codec: "h264", Profile: "High",
+			Width: 1920, Height: 1080, Bits: 8, DAR: "16:9", FPS: "30000/1001", Interlaced: true}},
+	} {
+		mf := &MediaFile{}
+		parseDump(mf, []byte(c.dump), "a.mkv")
+		if len(mf.Tracks) == 0 || !reflect.DeepEqual(mf.Tracks[0], c.want) {
+			t.Errorf("%s:\ngot  %+v\nwant %+v", name, mf.Tracks, c.want)
+		}
 	}
 
 	for _, out := range []string{"", "a.mkv: Invalid data found when processing input\n"} {
@@ -291,6 +366,26 @@ func TestParseDumpMatchesJSON(t *testing.T) {
 	fromDump.Duration = fromJSON.Duration // the description rounds it to centiseconds
 	if !reflect.DeepEqual(fromJSON, fromDump) {
 		t.Errorf("JSON  %+v\ndump  %+v", fromJSON, fromDump)
+	}
+}
+
+func TestFPSFraction(t *testing.T) {
+	for in, want := range map[string]string{"24000/1001": "24000/1001", "23.98": "24000/1001",
+		"11520000/480479": "24000/1001", "25/1": "25/1", "25": "25/1", "29.97": "30000/1001",
+		"59.94": "60000/1001", "29/1": "29/1", "12.50": "25/2", "25/2": "25/2", "1k": "1000/1",
+		"0/0": "", "": "", "N/A": "", "7/3": "7/3"} {
+		if got := fpsFraction(in); got != want {
+			t.Errorf("%q: %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestPixBits(t *testing.T) {
+	for in, want := range map[string]int{"yuv420p": 8, "yuvj420p": 8, "yuv420p10le": 10, "yuv422p10be": 10,
+		"yuv420p12le": 12, "p010le": 10, "nv12": 8, "gray": 8, "none": 0, "": 0, "rgb24": 0} {
+		if got := pixBits(in); got != want {
+			t.Errorf("%q: %d, want %d", in, got, want)
+		}
 	}
 }
 

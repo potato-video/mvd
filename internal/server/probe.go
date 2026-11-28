@@ -126,6 +126,7 @@ func (sv *Server) saveIndex(ix *library.Index) {
 type fileView struct {
 	Container string          `json:"container"`
 	Duration  float64         `json:"duration,omitempty"`
+	Bitrate   int             `json:"bitrate,omitempty"`
 	Tracks    []library.Track `json:"tracks"`
 }
 
@@ -144,7 +145,7 @@ func fileViews(media []*library.MediaFile, n int) []fileView {
 		if tracks == nil {
 			tracks = []library.Track{}
 		}
-		out = append(out, fileView{Container: mf.Container, Duration: mf.Duration, Tracks: tracks})
+		out = append(out, fileView{Container: mf.Container, Duration: mf.Duration, Bitrate: mf.Bitrate, Tracks: tracks})
 	}
 	return out
 }
