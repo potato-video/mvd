@@ -32,6 +32,11 @@ formats, not at all. mvd doesn't transcode, so use the `.m3u` link on every
 movie and episode page to play it in VLC, mpv or IINA, which play anything.
 The Apple TV, iPhone and iPad app plays everything through VLC.
 
+With ffprobe installed on the server (`opkg install ffprobe` on OpenWRT,
+`apk add ffmpeg` on Alpine, `brew install ffmpeg` on a Mac), mvd knows what's
+in each file, and the player says before it starts when the browser can't
+play the video or the sound.
+
 ## Something didn't import
 
 Run `mvd import` at a terminal to see why, and answer its questions. Or add

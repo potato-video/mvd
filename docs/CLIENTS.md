@@ -111,6 +111,9 @@ The player page resumes where you left off and records your progress as you
 watch. Browsers can only play some files: MP4 with H.264 reliably, and MKV in
 Chrome. mvd doesn't transcode, so for everything else use the `.m3u` link
 on the movie or episode page (see [Any other player](#any-other-player)).
+When the server has [ffprobe](FAQ.md#the-browser-wont-play-a-file), the
+player asks the browser about the file's video and sound first, and says
+straight away when it can't play them.
 Subtitles beside the video (`.srt` files) are offered in the player.
 
 ### Incoming

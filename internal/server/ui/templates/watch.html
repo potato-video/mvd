@@ -2,7 +2,8 @@
 {{with .Data}}
 <div class="player" id="player">
   <video id="video" src="{{index .Parts .Part}}" controls autoplay playsinline preload="metadata"
-    data-id="{{.ID}}" data-start="{{.Start}}" data-parts="{{join .Parts " "}}" data-part="{{.Part}}">
+    data-id="{{.ID}}" data-start="{{.Start}}" data-parts="{{join .Parts " "}}" data-part="{{.Part}}"
+    data-media="{{.Media}}">
     {{range .Subs}}{{if .VTT}}<track kind="subtitles" src="{{.VTT}}"{{if .Lang}} srclang="{{.Lang}}"{{end}} label="{{.Label}}"{{if .Forced}} default{{end}}>{{end}}{{end}}
   </video>
   <div class="bar-top">
@@ -13,7 +14,7 @@
     {{with .Next}}<a id="next" href="/watch/{{.ID}}" hidden>Next: {{.Label}}</a>{{end}}
   </div>
   <div class="notice" id="cant" hidden>
-    <p>This browser can't play this file. Open this in VLC or mpv instead; they play anything:</p>
+    <p><span id="why">This browser can't play this file.</span> Open this in VLC or mpv instead; they play anything:</p>
     <a class="playurl" href="{{.PlayURL}}">{{.PlayURL}}</a>
   </div>
 </div>
@@ -26,6 +27,31 @@
   // the end of the movie.
   const parts = v.dataset.parts.split(" ");
   let part = parseInt(v.dataset.part, 10) || 0, sent = 0;
+  // What's in each part, from the server's probe (null where it has
+  // none): asked about before playing, so a file this browser can't play
+  // says so rather than failing.
+  const media = JSON.parse(v.dataset.media || "[]");
+  const cant = (why) => {
+    v.removeAttribute("src"); v.load();
+    document.getElementById("why").textContent = "This browser can't play " + why + ".";
+    document.getElementById("cant").hidden = false;
+  };
+  const plays = (type, codecs) => v.canPlayType(type + '; codecs="' + codecs + '"') !== "";
+  // "direct", "try" (a container canPlayType can't vouch for, like MKV,
+  // that some browsers open anyway), or why not.
+  const verdict = (m) => {
+    if (!m) return "try";
+    const type = m.type === "video/webm" ? m.type : "video/mp4";
+    if (!m.video || !plays(type, m.video)) return "this file's video";
+    if (m.audio.length && (!m.audio[m.default] || !plays(type, m.audio[m.default]))) return "this file's sound";
+    if (!m.type) return "this kind of file";
+    return m.type === "video/x-matroska" ? "try" : "direct";
+  };
+  const check = () => {
+    const why = verdict(media[part]);
+    if (why !== "direct" && why !== "try") { cant(why); return false; }
+    return true;
+  };
   const post = (body) => fetch("/api/progress/" + id, {
     method: "POST", keepalive: true, headers: {"Content-Type": "application/json"}, body: JSON.stringify(body),
   }).catch(() => {});
@@ -44,7 +70,7 @@
     if (part + 1 < parts.length) {
       report();
       v.src = parts[++part];
-      v.play();
+      if (check()) v.play();
       return;
     }
     if (parts.length > 1) post({watched: true}); else report();
@@ -52,7 +78,8 @@
     if (next) next.hidden = false;
   });
   window.addEventListener("pagehide", report);
-  v.addEventListener("error", () => { document.getElementById("cant").hidden = false; });
+  v.addEventListener("error", () => { if (v.getAttribute("src")) document.getElementById("cant").hidden = false; });
+  check();
   // The title bar gets out of the way while playing.
   let idle;
   const wake = () => {

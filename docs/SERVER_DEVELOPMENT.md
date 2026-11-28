@@ -882,6 +882,14 @@ what they did before. The import's runtime tie-break uses the same `Probe`.
 - **In the API,** `files` is only in full views (and so in Up Next), and
   only when every part has been probed, so it always lines up with
   `streams`.
+- **Will the browser play it?** The server keeps no table of what each
+  browser plays: `MediaFile.Browser` (`browser.go`) names the container's
+  MIME type and each codec as RFC 6381 does (`avc1.640028`, `hvc1.2.4.L153.B0`,
+  `ec-3`), from the codec, profile, tag and bit depth, and the watch page
+  asks `canPlayType` about the video and the default audio track before
+  playing. One it can't play, or a container no browser opens (AVI), says
+  so at once; an MKV is tried, since `canPlayType` won't vouch for one that
+  Chrome plays.
 - **Testing:** `testutil.WriteClip` makes a 3 KB MKV with flagged tracks,
   a 16:9 picture from 4:3 pixels, 24000/1001 and flagged interlaced, when
   ffmpeg is installed. HDR, Dolby Vision and the rest are tested on saved

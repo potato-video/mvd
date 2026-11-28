@@ -4,6 +4,7 @@ package server
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -660,6 +661,7 @@ func (sv *Server) uiWatch(w http.ResponseWriter, r *http.Request) {
 		// From the part asked for (the first, normally) on to the last, as
 		// the Apple TV plays them; only the first part's place is kept.
 		d["Parts"], d["Part"], d["Title"], d["Back"] = v.Streams, part-1, v.Title, "/movies/"+id
+		d["Media"] = browserMedia(m.Media, len(v.Streams))
 		subs, start = v.Subs, v.Position
 		if part > 1 {
 			start = 0
@@ -667,6 +669,7 @@ func (sv *Server) uiWatch(w http.ResponseWriter, r *http.Request) {
 	} else if e := ix.Episode(id); e != nil {
 		v := ix.episodeView(e, true)
 		d["Parts"], d["Part"], d["Back"] = []string{v.Stream}, 0, "/tv/"+v.ShowID+fmt.Sprintf("?season=%d", v.Season)
+		d["Media"] = browserMedia([]*library.MediaFile{e.Media}, 1)
 		d["Title"] = v.ShowTitle + "  " + epcode(v.Season, v.Episode, v.LastEpisode) + " " + v.Title
 		subs, start = v.Subs, v.Position
 		eps := e.Show.InOrder()
@@ -693,6 +696,19 @@ func (sv *Server) uiWatch(w http.ResponseWriter, r *http.Request) {
 	}
 	d["Subs"], d["Start"], d["PlayURL"] = ws, start, sv.playLink(r, id)
 	sv.render(w, r, "watch", page{Title: fmt.Sprint(d["Title"]), Bare: true, BodyClass: "watch", Data: d})
+}
+
+// browserMedia is what the watch page asks the browser about each part, as
+// JSON: null for a part that hasn't been probed.
+func browserMedia(media []*library.MediaFile, n int) string {
+	out := make([]*library.Browser, n)
+	for i := range out {
+		if i < len(media) {
+			out[i] = media[i].Browser()
+		}
+	}
+	b, _ := json.Marshal(out)
+	return string(b)
 }
 
 // uiM3U hands the stream to a real player: browsers open .m3u files with

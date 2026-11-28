@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"mvd/internal/library"
 )
 
 func TestUIPages(t *testing.T) {
@@ -599,4 +601,30 @@ func mustDo(t *testing.T, c *http.Client, req *http.Request) *http.Response {
 		t.Fatal(err)
 	}
 	return r
+}
+
+// The watch page tells the browser what's in each part, to ask it before
+// playing: null where nothing's been probed.
+func TestUIWatchMedia(t *testing.T) {
+	ts := newTestServer(t, "")
+	defer ts.hs.Close()
+	if h := body(t, ts.do("GET", "/watch/m238", "", nil)); !strings.Contains(h, `data-media="[null]"`) {
+		t.Errorf("not probed: %s", h)
+	}
+	if library.FFprobe() == "" {
+		t.Skip("needs ffprobe")
+	}
+	ts.sv.waitProbing()
+	var sh showView
+	ts.json("GET", "/api/shows/s95396", "", &sh)
+	e2 := sh.Seasons[0].Episodes[1].ID
+	h := body(t, ts.do("GET", "/watch/"+e2, "", nil))
+	if !strings.Contains(h, "avc1.42E01E") {
+		t.Skip("needs ffmpeg for a real video")
+	}
+	want := `data-media="[{&#34;type&#34;:&#34;video/x-matroska&#34;,&#34;video&#34;:&#34;avc1.42E01E&#34;,` +
+		`&#34;audio&#34;:[&#34;mp4a.40.2&#34;,&#34;mp4a.40.2&#34;],&#34;default&#34;:0}]"`
+	if !strings.Contains(h, want) {
+		t.Errorf("probed: %s", h)
+	}
 }
