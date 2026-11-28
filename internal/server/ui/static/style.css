@@ -114,7 +114,10 @@ img { display: block; max-width: 100%; }
 .top nav a {
   color: var(--dim);
   text-decoration: none;
-  padding-bottom: 4px;
+  /* As much above the text as the underline takes below, so the text
+     centers on the logo. */
+  padding: 4px 0;
+  border-top: 2px solid transparent;
   border-bottom: 2px solid transparent;
 }
 
@@ -132,6 +135,7 @@ img { display: block; max-width: 100%; }
   display: flex;
   padding: 6px;
   color: var(--dim);
+  border-top: 2px solid transparent;
   border-bottom: 2px solid transparent;
 }
 .nav-search:hover { color: var(--paper); }

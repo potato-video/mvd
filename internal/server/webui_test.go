@@ -449,6 +449,10 @@ func TestUIShowPage(t *testing.T) {
 		`href="/watch/`+e1+`" hx-boost="false">Play S01E01</a>`, `class="playurl"`, `class="seasons"`) {
 		t.Errorf("show page:\n%s", h)
 	}
+	// A season tab swaps the tabs too, or the one picked isn't marked.
+	if !strings.Contains(h, `<nav class="seasons" id="seasons"`) || !strings.Contains(h, `hx-select="#episodes" hx-select-oob="#seasons"`) {
+		t.Errorf("season tabs don't swap themselves:\n%s", h)
+	}
 
 	ts.do("POST", "/api/progress/"+e1, `{"position": 300, "duration": 3000}`, nil).Body.Close()
 	h = body(t, ts.do("GET", "/tv/s95396", "", nil))

@@ -7,10 +7,10 @@
   <div class="wrap">{{template "hero" .Hero}}</div>
 </section>
 <div class="wrap detail">
-  <nav class="seasons" aria-label="Seasons">
+  <nav class="seasons" id="seasons" aria-label="Seasons">
     {{range .S.Seasons}}
       <a href="/tv/{{$.Data.S.ID}}?season={{.Number}}" aria-current="{{if eq .Number $.Data.Season.Number}}true{{else}}false{{end}}"
-        hx-target="#episodes" hx-select="#episodes" hx-swap="outerHTML" hx-push-url="true">{{if .Number}}Season {{.Number}}{{else}}Specials{{end}}</a>
+        hx-target="#episodes" hx-select="#episodes" hx-select-oob="#seasons" hx-swap="outerHTML" hx-push-url="true">{{if .Number}}Season {{.Number}}{{else}}Specials{{end}}</a>
     {{end}}
   </nav>
 
