@@ -76,9 +76,10 @@ it may have been tried.
   behavior, movies). Existing British spellings in older code
   needn't be rewritten, but new and changed text is US.
 - Fix bugs test-first: reproduce with a failing test, then fix.
-- Work on a feature branch off `main`, one per piece of work (Warren usually
-  names it). Commit there, not to `main`. `main` takes PRs: ask before
-  opening one, or merging.
+- Work on a feature branch off `main`, one per piece of work. Commit there,
+  not to `main`. `main` takes PRs: ask before opening one, or merging.
+- Ask Warren for a branch's name before creating it; don't make one up. If
+  he asks you to choose, name it after the changes on it.
 - Never commit secrets: tokens, TMDB keys, configs with them in.
 
 ## Go (server and CLI)
