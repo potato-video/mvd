@@ -158,6 +158,7 @@ the feature (`internal/torrent`, `internal/archive`) is only linked when a tagge
 | `files` | uploads (`uploads.go`, `uploads_folder.go`, `internal/upload`, `mvd upload`), the Needs you API (`needs.go`), and with `webui`, the Incoming page |
 | `torrent` | `mvd torrent`, `/api/downloads`, the import's seeding check |
 | `unpack` | unpacking archives on import (`internal/archive`), and taking them as uploads |
+| `remux` | with `webui`: repackaging MKVs as HLS with ffmpeg (`internal/remux`, `remux.go`), and hls.js |
 
 - **What every build keeps:** `mvd import` and its terminal questions,
   auto-import, `POST /api/import`, and the importer's list of finished
@@ -172,8 +173,9 @@ the feature (`internal/torrent`, `internal/archive`) is only linked when a tagge
   they lose their part of the website and archive uploads.
 
 The presets are in the Makefile: `minimal` (none), `standard`
-(`webui files downloads unpack`) and `full` (everything in `ALL`). A future `ffmpeg` tag
-would go in `ALL` and `full`, not `standard`.
+(`webui files downloads unpack`) and `full` (everything in `ALL`, so
+`remux` too). The remux's files are `remux && webui`, since only the
+website asks for one.
 
 ### Binary size
 
@@ -189,9 +191,12 @@ On the router (`GOARCH=mips`, `-ldflags='-s -w'`):
 | webui files | 10.69 MB |
 | webui files downloads | 10.88 MB |
 | webui files downloads unpack | 11.13 MB |
+| webui files downloads unpack remux | 11.32 MB |
 
 - **About 6.5 MB is the floor:** the Go runtime, `net/http`, and the TLS
   needed to talk to TMDB.
+- **The remux is 0.19 MB:** hls.js, embedded gzipped (108 KB), and the
+  little Go that runs ffmpeg and reads an MKV's index.
 - **The web UI is 2.4 MB**, but its files (htmx, the font, CSS, templates)
   are only about 0.25 MB. The rest is `html/template`: executing a template
   calls methods by name through reflection, and once that's reachable, the
@@ -896,6 +901,69 @@ what they did before. The import's runtime tie-break uses the same `Probe`.
   JSON and descriptions. Tests that need ffprobe or ffmpeg skip without
   them, and the test library's episode `S01E02` is a real clip when ffmpeg
   is there, so making the Apple apps' fixtures needs both.
+
+## Remuxing (ffmpeg)
+
+`internal/remux`, `internal/server/remux.go` and the watch page; the
+`remux` tag, with `webui`. Safari, and so every iPhone and iPad browser,
+won't open an MKV, though it plays the H.264 or HEVC and AAC or AC-3
+inside. ffmpeg can move them into fragmented MP4 without decoding them
+(`-c copy`), as HLS, which Safari plays natively and other browsers through
+hls.js. It's packets in and out, so light enough for the router (where it
+needs `opkg install ffmpeg`). Without ffmpeg on the `PATH` nothing is
+offered.
+
+- **When:** the watch page has each part's remux playlist where the file is
+  an MKV (or WebM) with H.264, HEVC or AV1 (`remuxable`), and the server has
+  ffmpeg and a cache folder. It remuxes when the browser plays the video
+  but not the default audio track, and another track it does play
+  (TrueHD with an AC-3 track beside it), or when it tries the MKV and fails
+  (Safari). The audio track is the default one if the browser plays it,
+  else the first it does. Subtitles stay the sidecars, as `<track>`s.
+- **The playlist is mvd's,** not ffmpeg's, so it's whole from the start and
+  the player knows the length and can seek anywhere. `mkv.go` reads the
+  MKV's Cues, the index of its keyframes that mkvmerge and ffmpeg write
+  near the end and point to from the SeekHead at the start (or walks the
+  top-level elements to it, a cluster at a time, when the SeekHead doesn't
+  say), and the playlist has one segment per keyframe. ffmpeg cuts one at
+  every keyframe (`-hls_time 0.001`), so segment N always starts at
+  keyframe N. A file without Cues isn't remuxed. Only the index is read,
+  a few hundred KB at most.
+- **Starting again:** a segment ffmpeg hasn't made, and won't within 30
+  seconds, starts it again there: `-seek_timestamp 1 -ss` partway into
+  that segment (ffmpeg starts from the keyframe before), `-start_number N`,
+  and `-copyts -avoid_negative_ts disabled` with `movflags=+frag_discont`,
+  so each fragment's time is absolute and what it makes is what it would
+  have made reading through: the same `init.mp4`, the same timestamps to
+  the millisecond MKV keeps them to (`TestRemuxStartsAgain`). The page's
+  resume point (`&start=`) starts it at the right segment to begin with.
+- **Not too far ahead:** ffmpeg is paused (`SIGSTOP`) once it's two minutes
+  past the segment last asked for, and carried on at one minute, and
+  segments more than two minutes behind are deleted. So it writes a few
+  hundred MB to the drive at most, never to `/tmp`: `cache/remux/now/`,
+  emptied when the remux stops and at startup.
+- **One at a time.** A remux is someone's (the token's name and the
+  address), and someone else asking for one while it's in use is a 409.
+  The same viewer asking for something else stops theirs first. Two minutes
+  with nothing asked of it stops it, and shutting down stops it. ffmpeg gets
+  `oom_score_adj` 1000, so the kernel kills it, cheap to start again, before
+  mvd or Transmission.
+- **Waiting:** a request for a segment waits for it, up to 30 seconds. It's
+  ready when ffmpeg has renamed it into place (`-hls_flags temp_file`).
+- **hls.js** 1.6's light build is `hls/hls.light.min.js.gz`, served at
+  `/remux/hls.js` (see `hls/README.md` to update it), and loaded only when a
+  page remuxes. Apple's browsers use their own HLS; other browsers use
+  hls.js where they have MediaSource, since Chrome says it may play HLS and
+  then doesn't play this.
+- **Not in the API:** the routes are the website's, like `/watch` and
+  `/play`. The Apple apps play everything through VLC.
+- **Not measured on the router yet:** ffmpeg's memory beside mvd and
+  Transmission, its speed, and the time to the first segment after a
+  seek. That `ffmpeg -h muxer=hls` lists `hls_segment_options` there (5.1)
+  is to check too.
+- **Testing:** `internal/remux`'s tests make MKVs by hand for the index, and
+  with ffmpeg for the rest (skipped without it); `TestRemuxRoutes` remuxes
+  the test library's real clip.
 
 ## Security
 

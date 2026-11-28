@@ -194,6 +194,8 @@ var routeLevels = map[string]level{
 	"GET /api/search":               viewer,
 	"POST /api/progress/{id}":       viewer,
 	"GET /stream/{id}":              viewer,
+	"GET /remux/hls.js":             viewer,
+	"GET /remux/{id}/{file}":        viewer,
 	"GET /subs/{id}/{n}":            viewer,
 	"GET /art/{id}/{kind}":          viewer,
 	"GET /{$}":                      viewer,

@@ -91,9 +91,10 @@ type testServer struct {
 func newTestServer(t *testing.T, token string) *testServer {
 	movies, tv := testLibrary(t)
 	st, _ := loadState(filepath.Join(t.TempDir(), "state.json"))
-	sv := &Server{cfg: config.Config{MoviesDir: movies, TVDir: tv, Token: token, DataDir: t.TempDir()}, state: st}
+	sv := &Server{cfg: config.Config{MoviesDir: movies, TVDir: tv, Token: token, DataDir: t.TempDir(), CacheDir: t.TempDir()}, state: st}
 	sv.rescan()
 	sv.waitProbing()
+	t.Cleanup(sv.stopRemux)
 	return &testServer{t, httptest.NewServer(sv.routes()), sv}
 }
 

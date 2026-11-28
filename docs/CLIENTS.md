@@ -113,7 +113,11 @@ Chrome. mvd doesn't transcode, so for everything else use the `.m3u` link
 on the movie or episode page (see [Any other player](#any-other-player)).
 When the server has [ffprobe](FAQ.md#the-browser-wont-play-a-file), the
 player asks the browser about the file's video and sound first, and says
-straight away when it can't play them.
+straight away when it can't play them. A server built with `remux` and
+with ffmpeg installed repackages an MKV the browser won't open (Safari,
+and every browser on an iPhone or iPad), or one whose default sound it
+can't play when another track it can is there, as it plays; one at a
+time, so someone else watching that way gets a message saying so.
 Subtitles beside the video (`.srt` files) are offered in the player.
 
 ### Incoming

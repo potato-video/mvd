@@ -8,12 +8,14 @@
 #              (shown on the Incoming page with webui and files)
 #   unpack     unpacking .zip and .rar archives on import (and uploading
 #              them, with files)
-#   (ffmpeg    transcoding: not yet)
+#   remux      repackaging MKVs as HLS with ffmpeg, when it's installed, for
+#              browsers that won't play them (Safari): only with webui
 #
 # FEATURES picks them; PRESET is a shorthand:
 #
 #   make                          the standard build: webui files downloads unpack
 #   make PRESET=minimal           import, refresh, the API and streaming only
+#   make PRESET=full              everything: the standard build and remux
 #   make FEATURES="webui"         any mix
 #   make install                  build, then symlink mvd into ~/.local/bin (BINDIR=...)
 #   make router                   the same, for the GL-AR750S (big-endian MIPS)
@@ -27,7 +29,7 @@
 
 GO       ?= go
 PRESET   ?= standard
-ALL      := webui files downloads unpack
+ALL      := webui files downloads unpack remux
 
 preset_minimal  :=
 preset_standard := webui files downloads unpack
@@ -42,6 +44,11 @@ $(warning downloads without files: downloads work from mvd torrent and the API, 
 endif
 ifneq ($(filter unpack,$(FEATURES)),)
 $(warning unpack without files: mvd import unpacks archives, but nothing can upload them)
+endif
+endif
+ifeq ($(filter webui,$(FEATURES)),)
+ifneq ($(filter remux,$(FEATURES)),)
+$(warning remux without webui: only the website asks for remuxes, so it does nothing)
 endif
 endif
 

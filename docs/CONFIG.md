@@ -82,7 +82,7 @@ folder. mvd refuses one that does, since the trash is emptied by itself.
 | Setting | Default | |
 |---|---|---|
 | `data_dir` | `~/.config/mvd` | mvd's own files: the three below, `import.log` and `import.lock` |
-| `cache_dir` | `data_dir/cache` | TMDB's answers, kept for 30 days |
+| `cache_dir` | `data_dir/cache` | TMDB's answers, kept for 30 days, and a remux's segments while it runs (a few hundred MB at most) |
 | `state_file` | `data_dir/state.json` | watch progress and Up Next |
 | `index_file` | `data_dir/index.json` | the library index, so the server starts quickly |
 

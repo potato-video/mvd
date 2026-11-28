@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"mvd/internal/config"
+	"mvd/internal/library"
 )
 
 // Every pattern the server registers, in any build, has an access level,
@@ -102,7 +103,7 @@ func newTokenServer(t *testing.T) *testServer {
 	dir := t.TempDir()
 	st, _ := loadState(filepath.Join(dir, "state.json"))
 	cfg := config.Config{MoviesDir: movies, TVDir: tv, Token: adminTok, DataDir: t.TempDir(),
-		StateFile: filepath.Join(dir, "state.json"),
+		CacheDir: t.TempDir(), StateFile: filepath.Join(dir, "state.json"),
 		Tokens: []config.Token{
 			{Name: "kids", Token: kidsTok, Ratings: []string{"U", "PG"}, Limited: true, Unrated: true},
 			{Name: "Den", Token: denTok},
@@ -110,6 +111,7 @@ func newTokenServer(t *testing.T) *testServer {
 	sv := &Server{cfg: cfg, state: st}
 	sv.rescan()
 	sv.waitProbing()
+	t.Cleanup(sv.stopRemux)
 	return &testServer{t, httptest.NewServer(sv.routes()), sv}
 }
 
@@ -127,7 +129,8 @@ func (ts *testServer) body(method, path, body string, hdr map[string]string) (in
 func TestHiddenByCertification(t *testing.T) {
 	ts := newTokenServer(t)
 	defer ts.hs.Close()
-	hidden := []string{"m238", "s95396", "e95396101", "e95396001"}
+	// e95396102 is a real video, when ffmpeg's installed, which a remux needs.
+	hidden := []string{"m238", "s95396", "e95396101", "e95396001", "e95396102"}
 
 	// Every viewer route with an id in it, driven from the table, so a new
 	// route is covered or this fails.
@@ -146,7 +149,11 @@ func TestHiddenByCertification(t *testing.T) {
 			if id[0] == 'e' {
 				kind = "thumb"
 			}
-			p := strings.NewReplacer("{id}", id, "{file}", id+".m3u", "{n}", "0", "{kind}", kind).Replace(path)
+			file := id + ".m3u"
+			if strings.HasPrefix(path, "/remux/") {
+				file = "index.m3u8"
+			}
+			p := strings.NewReplacer("{id}", id, "{file}", file, "{n}", "0", "{kind}", kind).Replace(path)
 			body := ""
 			if method == "POST" {
 				body = `{"watched": true}`
@@ -166,6 +173,9 @@ func TestHiddenByCertification(t *testing.T) {
 		req := httptest.NewRequest(method, strings.NewReplacer("{id}", "x", "{file}", "x", "{n}", "0", "{kind}", "x").Replace(path), nil)
 		if _, got := ts.sv.mux.Handler(req); got == pattern {
 			tried++
+			if !seen && strings.HasPrefix(path, "/remux/") && (library.FFprobe() == "" || ts.sv.ix.Load().Episode("e95396102").Media.Tracks == nil) {
+				continue // needs ffmpeg and ffprobe for a video to remux
+			}
 			if !seen {
 				t.Errorf("%s: the admin can't reach any of %v either, so this proves nothing", pattern, hidden)
 			}

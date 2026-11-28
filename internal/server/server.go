@@ -39,6 +39,7 @@ type Server struct {
 	probes   probing
 	tpl      uiTemplates
 	dl       downloadsState // the downloads feature's, when built in
+	rx       remuxState     // and the remux's
 	ups      uploads
 	auto     autoImport
 	imports  imports
@@ -136,6 +137,7 @@ func Run(cfg config.Config) int {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		hs.Shutdown(ctx)
+		sv.stopRemux()
 	}()
 
 	ln, err := net.Listen("tcp", cfg.Listen())
@@ -241,6 +243,7 @@ func (sv *Server) routes() http.Handler {
 	mux.HandleFunc("GET /subs/{id}/{n}", sv.subs)
 	mux.HandleFunc("GET /art/{id}/{kind}", sv.art)
 	sv.uiRoutes(mux)
+	sv.remuxRoutes(mux)
 	sv.mux = mux
 	return versioned(sv.guard(limitBodies(sv.auth(mux))))
 }

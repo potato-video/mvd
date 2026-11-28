@@ -224,7 +224,7 @@ auto-import, episode orders, reading `mvd status`, and the rest.
 
 ## Optional parts
 
-The web UI, uploads, downloads and unpacking archives are
+The web UI, uploads, downloads, unpacking archives and remuxing are
 optional, chosen when building. Leave out what you don't need to keep the
 binary small. The minimal build is enough to keep a library you fill
 yourself (over SMB, say) and file with `mvd import`.
@@ -236,14 +236,17 @@ yourself (over SMB, say) and file with `mvd import`.
 | `files` | uploads (`mvd upload`, `/api/uploads`), the Incoming page (with `webui`), and answering what an import left (Needs you) | +0.2 MB |
 | `downloads` | downloads, through a download client on the same machine (see [docs/DOWNLOADS.md](docs/DOWNLOADS.md)) | +0.2 MB |
 | `unpack` | unpacking `.zip` and `.rar` archives on import (and uploading them, with `files`) | +0.2 MB |
+| `remux` | with `webui`, and ffmpeg installed: MKVs repackaged on the fly for browsers that won't open them (Safari) | +0.2 MB |
 
 The features are independent, but `downloads` and `unpack` help get things in,
 so without `files` they lose their part of the website and archive uploads,
-and `make` warns.
+and `make` warns. `remux` is for the website, so it does nothing without
+`webui`.
 
 ```bash
 make                     # the standard build: webui files downloads unpack
 make PRESET=minimal      # none of them
+make PRESET=full         # all of them: the standard build and remux
 make FEATURES="webui"    # any mix
 make sizes               # what each adds to the router binary
 make release             # what a release holds, in dist/: webui and files, for each kind of machine

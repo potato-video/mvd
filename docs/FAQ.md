@@ -35,7 +35,12 @@ The Apple TV, iPhone and iPad app plays everything through VLC.
 With ffprobe installed on the server (`opkg install ffprobe` on OpenWRT,
 `apk add ffmpeg` on Alpine, `brew install ffmpeg` on a Mac), mvd knows what's
 in each file, and the player says before it starts when the browser can't
-play the video or the sound.
+play the video or the sound. With ffmpeg too (`opkg install ffmpeg`) and
+mvd built with `remux` (`make PRESET=full`), an MKV Safari won't open is
+repackaged as it plays, if its video is H.264, HEVC or AV1 and it has
+sound the browser plays. That's one at a time, and needs the MKV's index of
+keyframes, which nearly all have. Video the browser can't play (MPEG-2,
+Xvid, 10-bit H.264) would need transcoding, which mvd doesn't do.
 
 ## Something didn't import
 

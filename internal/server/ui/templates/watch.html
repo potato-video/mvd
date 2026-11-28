@@ -3,7 +3,7 @@
 <div class="player" id="player">
   <video id="video" src="{{index .Parts .Part}}" controls autoplay playsinline preload="metadata"
     data-id="{{.ID}}" data-start="{{.Start}}" data-parts="{{join .Parts " "}}" data-part="{{.Part}}"
-    data-media="{{.Media}}">
+    data-media="{{.Media}}" data-remux="{{.Remux}}">
     {{range .Subs}}{{if .VTT}}<track kind="subtitles" src="{{.VTT}}"{{if .Lang}} srclang="{{.Lang}}"{{end}} label="{{.Label}}"{{if .Forced}} default{{end}}>{{end}}{{end}}
   </video>
   <div class="bar-top">
@@ -29,13 +29,18 @@
   let part = parseInt(v.dataset.part, 10) || 0, sent = 0;
   // What's in each part, from the server's probe (null where it has
   // none): asked about before playing, so a file this browser can't play
-  // says so rather than failing.
-  const media = JSON.parse(v.dataset.media || "[]");
-  const cant = (why) => {
+  // says so rather than failing. Where the server can remux a part (an
+  // MKV, which Safari won't open), its playlist; "" where it can't.
+  const media = JSON.parse(v.dataset.media || "[]"), remuxes = JSON.parse(v.dataset.remux || "[]");
+  let hls = null, remuxing = false, seekTo = part === 0 ? start : 0;
+  const notice = (text) => {
+    if (hls) { hls.destroy(); hls = null; }
+    remuxing = false;
     v.removeAttribute("src"); v.load();
-    document.getElementById("why").textContent = "This browser can't play " + why + ".";
+    if (text) document.getElementById("why").textContent = text;
     document.getElementById("cant").hidden = false;
   };
+  const cant = (why) => notice("This browser can't play " + why + ".");
   const plays = (type, codecs) => v.canPlayType(type + '; codecs="' + codecs + '"') !== "";
   // "direct", "try" (a container canPlayType can't vouch for, like MKV,
   // that some browsers open anyway), or why not.
@@ -47,10 +52,62 @@
     if (!m.type) return "this kind of file";
     return m.type === "video/x-matroska" ? "try" : "direct";
   };
-  const check = () => {
+  // The audio track a remux takes: the default if this browser plays it,
+  // else the first it does; -1 with none at all, null if it plays none.
+  const remuxAudio = (m) => {
+    if (!m.audio.length) return -1;
+    const ok = (i) => m.audio[i] && plays("video/mp4", m.video + "," + m.audio[i]);
+    if (ok(m.default)) return m.default;
+    const i = m.audio.findIndex((_, i) => ok(i));
+    return i >= 0 ? i : null;
+  };
+  const canRemux = () => {
+    const m = media[part];
+    return !!(remuxes[part] && m && m.video && plays("video/mp4", m.video) && remuxAudio(m) !== null);
+  };
+  let hlsLoading = null;
+  const loadHls = () => hlsLoading || (hlsLoading = new Promise((ok, fail) => {
+    const s = document.createElement("script");
+    s.src = "/remux/hls.js"; s.onload = ok; s.onerror = fail;
+    document.head.appendChild(s);
+  }));
+  // remux plays the part through the server's remux, from at seconds: in
+  // Safari natively, elsewhere through hls.js.
+  const remux = (at) => {
+    remuxing = true;
+    const url = remuxes[part] + "&audio=" + remuxAudio(media[part]) + "&start=" + Math.floor(at);
+    v.removeAttribute("src"); v.load();
+    fetch(url).then(async (r) => {
+      if (!r.ok) { notice(await r.text()); return; }
+      // Apple's browsers play HLS themselves; Chrome may say it does, and
+      // not play this, so elsewhere it's hls.js, where there's MSE for it.
+      const native = v.canPlayType("application/vnd.apple.mpegurl") !== "";
+      const mse = window.MediaSource || window.ManagedMediaSource;
+      if (native && (/^Apple/.test(navigator.vendor) || !mse)) {
+        seekTo = at;
+        v.src = url;
+      } else {
+        await loadHls().catch(() => {});
+        if (!window.Hls || !Hls.isSupported()) { cant("this file"); return; }
+        hls = new Hls({startPosition: at});
+        hls.on(Hls.Events.ERROR, (e, d) => {
+          if (!d.fatal) return;
+          const t = d.response && d.response.code >= 400 && typeof d.response.data === "string" ? d.response.data : "";
+          t ? notice(t) : cant("this file");
+        });
+        hls.loadSource(url);
+        hls.attachMedia(v);
+      }
+      v.play().catch(() => {});
+    }).catch(() => cant("this file"));
+  };
+  // begin says whether the part as it's set plays as it is; if not, it
+  // remuxes it or says it can't play.
+  const begin = () => {
     const why = verdict(media[part]);
-    if (why !== "direct" && why !== "try") { cant(why); return false; }
-    return true;
+    if (why === "direct" || why === "try") return true;
+    canRemux() ? remux(seekTo) : cant(why);
+    return false;
   };
   const post = (body) => fetch("/api/progress/" + id, {
     method: "POST", keepalive: true, headers: {"Content-Type": "application/json"}, body: JSON.stringify(body),
@@ -60,7 +117,8 @@
     post({position: v.currentTime, duration: v.duration});
   };
   v.addEventListener("loadedmetadata", () => {
-    if (part === 0 && start > 0 && start < v.duration - 10) v.currentTime = start;
+    if (seekTo > 0 && seekTo < v.duration - 10 && Math.abs(v.currentTime - seekTo) > 1) v.currentTime = seekTo;
+    seekTo = 0;
   });
   v.addEventListener("timeupdate", () => {
     if (Date.now() - sent > 10000) { sent = Date.now(); report(); }
@@ -69,8 +127,10 @@
   v.addEventListener("ended", () => {
     if (part + 1 < parts.length) {
       report();
+      if (hls) { hls.destroy(); hls = null; }
+      remuxing = false; seekTo = 0;
       v.src = parts[++part];
-      if (check()) v.play();
+      if (begin()) v.play();
       return;
     }
     if (parts.length > 1) post({watched: true}); else report();
@@ -78,8 +138,14 @@
     if (next) next.hidden = false;
   });
   window.addEventListener("pagehide", report);
-  v.addEventListener("error", () => { if (v.getAttribute("src")) document.getElementById("cant").hidden = false; });
-  check();
+  // A file the browser said it might play, and couldn't: remuxed if it can
+  // be, from where it got to.
+  v.addEventListener("error", () => {
+    if (!v.getAttribute("src") || hls) return; // hls.js says for itself
+    if (remuxing) cant("this file");
+    else canRemux() ? remux(v.currentTime || seekTo) : notice();
+  });
+  begin();
   // The title bar gets out of the way while playing.
   let idle;
   const wake = () => {

@@ -662,6 +662,7 @@ func (sv *Server) uiWatch(w http.ResponseWriter, r *http.Request) {
 		// the Apple TV plays them; only the first part's place is kept.
 		d["Parts"], d["Part"], d["Title"], d["Back"] = v.Streams, part-1, v.Title, "/movies/"+id
 		d["Media"] = browserMedia(m.Media, len(v.Streams))
+		d["Remux"] = jsonString(sv.remuxURLs(id, m.Media, len(v.Streams)))
 		subs, start = v.Subs, v.Position
 		if part > 1 {
 			start = 0
@@ -670,6 +671,7 @@ func (sv *Server) uiWatch(w http.ResponseWriter, r *http.Request) {
 		v := ix.episodeView(e, true)
 		d["Parts"], d["Part"], d["Back"] = []string{v.Stream}, 0, "/tv/"+v.ShowID+fmt.Sprintf("?season=%d", v.Season)
 		d["Media"] = browserMedia([]*library.MediaFile{e.Media}, 1)
+		d["Remux"] = jsonString(sv.remuxURLs(id, []*library.MediaFile{e.Media}, 1))
 		d["Title"] = v.ShowTitle + "  " + epcode(v.Season, v.Episode, v.LastEpisode) + " " + v.Title
 		subs, start = v.Subs, v.Position
 		eps := e.Show.InOrder()
@@ -707,7 +709,11 @@ func browserMedia(media []*library.MediaFile, n int) string {
 			out[i] = media[i].Browser()
 		}
 	}
-	b, _ := json.Marshal(out)
+	return jsonString(out)
+}
+
+func jsonString(v any) string {
+	b, _ := json.Marshal(v)
 	return string(b)
 }
 
